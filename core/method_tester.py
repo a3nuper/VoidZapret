@@ -156,6 +156,35 @@ def probe_hosts(
     return ok, len(hosts), avg
 
 
+def probe_hosts_detail(
+    hosts: list[str], timeout: float = PROBE_TIMEOUT_S, workers: int = PROBE_WORKERS,
+) -> tuple[int, int, float, list[str]]:
+    """Как probe_hosts, но дополнительно возвращает список НЕпробитых хостов."""
+    if not hosts:
+        return 0, 0, 0.0, []
+    pool = ThreadPoolExecutor(max_workers=max(1, min(workers, len(hosts))))
+    futures = [(h, pool.submit(_probe_host, h, timeout)) for h in hosts]
+    deadline = time.monotonic() + timeout + 2
+    ok = 0
+    latencies: list[float] = []
+    failed: list[str] = []
+    for host, fut in futures:
+        remaining = max(0.05, deadline - time.monotonic())
+        try:
+            good, latency = fut.result(timeout=remaining)
+        except Exception:
+            good, latency = False, None
+        if good:
+            ok += 1
+            if latency is not None:
+                latencies.append(latency)
+        else:
+            failed.append(host)
+    pool.shutdown(wait=False)
+    avg = sum(latencies) / len(latencies) if latencies else 0.0
+    return ok, len(hosts), avg, failed
+
+
 class MethodTester:
     """Фоновый перебор стратегий с поиском лучшей."""
 

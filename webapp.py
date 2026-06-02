@@ -23,7 +23,9 @@ from config import (
 from core import app_updater, autostart, dns, quic, updater, warp, zapret_flags
 from core.admin import is_admin
 from config import get_winws_path
-from core.method_tester import MethodTester, COMBINED_HOSTS, _probe_host, probe_hosts
+from core.method_tester import (
+    MethodTester, COMBINED_HOSTS, _probe_host, probe_hosts, probe_hosts_detail,
+)
 from core.orchestrator import Orchestrator, ST_FAILED, ST_RUNNING
 from core.process_manager import kill_winws, reset_windivert
 from core.engine.engine import VoidEngine
@@ -47,6 +49,18 @@ SERVICES = [
 
 # Хост для живого пинга (TCP-connect).
 _PING_HOST = "www.youtube.com"
+
+# Реальные make-or-break эндпоинты для самопроверки движка: не только страницы,
+# но и видео-CDN (googlevideo/youtubei) и Discord-шлюз (gateway/cdn) — чтобы
+# «связь N/M» отражала, реально ли заработают видео и Discord, а не только сайт.
+ENGINE_HOSTS = [
+    "www.youtube.com",
+    "youtubei.googleapis.com",
+    "redirector.googlevideo.com",
+    "discord.com",
+    "gateway.discord.gg",
+    "cdn.discordapp.com",
+]
 
 
 def _tcp_ping(host: str = _PING_HOST, port: int = 443, timeout: float = 2.0):
@@ -384,7 +398,7 @@ class Api:
         Принимаем движок, если пробил почти всё (ok >= total-1, минимум 2) — одна
         цель может лежать по своей причине (геоблок и т.п.). Иначе → combined.
         """
-        hosts = list(COMBINED_HOSTS)
+        hosts = list(ENGINE_HOSTS)
         total = len(hosts)
         best = None  # (strat, ok, total, lat)
         for strat in engine_strategies.STRATEGIES:
@@ -404,14 +418,16 @@ class Api:
                     self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
                     return None
             time.sleep(3.0)
-            ok, _t, lat = probe_hosts(hosts, timeout=4.0)
-            self._push("onLog", f"[engine] {strat}: связь {ok}/{total}"
-                                + (f", ~{lat:.0f} мс" if ok else ""), "system")
+            ok, _t, lat, failed = probe_hosts_detail(hosts, timeout=4.0)
+            msg = f"[engine] {strat}: связь {ok}/{total}" + (f", ~{lat:.0f} мс" if ok else "")
+            if failed:
+                msg += "  ✗ " + ", ".join(failed)
+            self._push("onLog", msg, "system")
             if best is None or (ok, -(lat or 9999)) > (best[1], -(best[3] or 9999)):
                 best = (strat, ok, total, lat)
             if ok == total:        # идеально — дальше не ищем
                 break
-        if best and best[1] >= max(2, total - 1):
+        if best and best[1] >= max(2, total // 2):
             # поднимаем движок именно на лучшей технике (после перебора крутится последняя)
             if epoch != self._start_epoch or not self._want:
                 return None
@@ -428,7 +444,7 @@ class Api:
             time.sleep(25.0)
             if not (self._engine_on and epoch == self._start_epoch and self._want):
                 return
-            ok, total, lat = probe_hosts(list(COMBINED_HOSTS), timeout=4.0)
+            ok, total, lat = probe_hosts(list(ENGINE_HOSTS), timeout=4.0)
             self._engine_stats = (ok, total, lat) if ok else self._engine_stats
             if ok < max(1, (total + 1) // 2):
                 self._push("onLog", "Связь просела — переключаю стратегию", "system")
