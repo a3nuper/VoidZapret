@@ -160,12 +160,13 @@
   // ---------------- попапы чипов (Соединение / Пинг) ----------------
   const backdrop = $("modal-backdrop");
   let connTimer = null;
+  let pingModalOpen = false;
   function closeModals() {
     $("conn-modal").classList.remove("open");
     $("ping-modal").classList.remove("open");
     backdrop.classList.remove("open");
     if (connTimer) { clearInterval(connTimer); connTimer = null; }
-    call("ping_stop"); pingStop();
+    pingModalOpen = false;
   }
   backdrop.addEventListener("click", closeModals);
   document.querySelectorAll("[data-modal-close]").forEach((b) => b.addEventListener("click", closeModals));
@@ -186,18 +187,27 @@
     connRefresh(); connTimer = setInterval(connRefresh, 4000);
   });
 
-  // — Пинг (живой график + плавно «бегущая» цифра) —
+  // — Пинг (живой график + плавно «бегущая» цифра, и в чипе, и в попапе) —
   const pCanvas = $("ping-canvas"), pCtx = pCanvas.getContext("2d");
-  let pingData = [], pShown = 0, pTarget = 0, pTimer = null;
+  let pingData = [];
   function stepDelay(d) { d = Math.abs(d); return d <= 5 ? 90 : d <= 15 ? 55 : d <= 30 ? 30 : d <= 50 ? 18 : 9; }
-  function pingTick() {
-    if (pShown === pTarget) { pTimer = null; return; }
-    pShown += Math.sign(pTarget - pShown);
-    $("ping-num").textContent = pShown;
-    pTimer = setTimeout(pingTick, stepDelay(pTarget - pShown));
+  // Плавный счётчик: считает по единичке к цели, скорость шага зависит от дельты.
+  function makeCounter(el, suffix) {
+    let shown = 0, target = 0, timer = null;
+    function tick() {
+      if (shown === target) { timer = null; return; }
+      shown += Math.sign(target - shown);
+      el.textContent = shown + suffix;
+      timer = setTimeout(tick, stepDelay(target - shown));
+    }
+    return {
+      set(v) { target = Math.round(v); if (!timer) tick(); },
+      reset() { shown = 0; target = 0; if (timer) { clearTimeout(timer); timer = null; } },
+    };
   }
-  function setPingNum(v) { pTarget = Math.round(v); if (!pTimer) pingTick(); }
-  function pingStop() { if (pTimer) { clearTimeout(pTimer); pTimer = null; } }
+  const chipPing = makeCounter($("v-ping"), " мс");   // на главной
+  const bigPing = makeCounter($("ping-num"), "");      // в попапе
+  function pingColor(ms) { return ms <= 0 ? "" : ms < 80 ? "#30D158" : ms < 160 ? "#FF9F0A" : "#FF453A"; }
   function drawPing() {
     const w = pCanvas.width, h = pCanvas.height; pCtx.clearRect(0, 0, w, h);
     const vals = pingData.filter((v) => v > 0);
@@ -223,9 +233,9 @@
     pCtx.stroke();
   }
   $("chip-ping").addEventListener("click", () => {
-    pingData = []; pShown = 0; pTarget = 0; $("ping-num").textContent = "…"; drawPing();
+    bigPing.reset(); $("ping-num").textContent = "…"; drawPing();
+    pingModalOpen = true;
     $("ping-modal").classList.add("open"); backdrop.classList.add("open");
-    call("ping_start");
   });
 
   // ---------------- титулбар ----------------
@@ -249,15 +259,14 @@
       setText($("status"), T[state] || state);
       setText($("subtitle"), S[state] || detail || "");
       if (state === "off" || state === "error") {
+        chipPing.reset();
         $("v-conn").textContent = "—"; $("v-ping").textContent = "—"; $("v-time").textContent = "—";
       }
     },
     onStats(ok, total, lat, uptime) {
       const conn = total ? `${ok}/${total}` : "—";
       if ($("v-conn").textContent !== conn) { $("v-conn").textContent = conn; bump($("v-conn")); }
-      const ping = lat ? `${lat} мс` : "—";
-      if ($("v-ping").textContent !== ping) { $("v-ping").textContent = ping; bump($("v-ping")); }
-      $("v-ping").style.color = !lat ? "" : lat < 80 ? "#30D158" : lat < 160 ? "#FF9F0A" : "#FF453A";
+      // пинг ведёт onPing (живой, с анимацией); здесь только соединение и время
       const h = Math.floor(uptime/3600), m = Math.floor((uptime%3600)/60), s = uptime%60;
       $("v-time").textContent = `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
     },
@@ -303,8 +312,14 @@
     onDnsStatus(d) { applyDns(d); },
     onPing(ms) {
       pingData.push(ms); if (pingData.length > 60) pingData.shift();
-      drawPing();
-      if (ms > 0) setPingNum(ms); else $("ping-num").textContent = "✕";
+      // главный чип — всегда (с анимацией и цветом)
+      if (ms > 0) { chipPing.set(ms); $("v-ping").style.color = pingColor(ms); }
+      else { $("v-ping").textContent = "✕"; $("v-ping").style.color = "#FF453A"; }
+      // попап — только пока открыт
+      if (pingModalOpen) {
+        drawPing();
+        if (ms > 0) bigPing.set(ms); else $("ping-num").textContent = "✕";
+      }
     },
     onNotify(msg) { toast(msg); },
   };

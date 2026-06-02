@@ -399,6 +399,7 @@ class Api:
         # Восстанавливаем выбранный DNS на систему (чтобы не «слетал» после перезапуска).
         if self._config.dns_force or self._config.dns_provider != "dhcp":
             threading.Thread(target=self._dns_apply, daemon=True).start()
+        self.ping_start()   # живой пинг раз в секунду (для чипа и попапа)
         if self._config.autoconnect_zapret:
             threading.Timer(0.8, self.toggle).start()
         # Автообновление: тумблер «Автообновление» управляет И zapret, И самим
