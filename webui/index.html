@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VoidZapret</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-state="off">
+  <div class="aurora a1"></div>
+  <div class="aurora a2"></div>
+  <div class="aurora a3"></div>
+  <div class="grain"></div>
+
+  <header class="titlebar pywebview-drag-region">
+    <div class="brand"><span class="brand-dot"></span> VoidZapret</div>
+    <div class="win-controls">
+      <button class="win-btn" id="btn-min" title="Свернуть">&#8211;</button>
+      <button class="win-btn close" id="btn-close" title="Закрыть">&#10005;</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <!-- Навигационный рейл -->
+    <nav class="rail">
+      <button class="nav-btn active" data-view="home" title="Главная">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M12 3v9"/><path d="M6.8 6.8a8 8 0 1 0 10.4 0"/></svg>
+      </button>
+      <button class="nav-btn" data-view="log" title="Журнал">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M5 5h14M5 10h14M5 15h9"/></svg>
+      </button>
+      <button class="nav-btn" data-view="warp" title="WARP">
+        <svg viewBox="0 0 24 24" class="ic"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>
+      </button>
+      <button class="nav-btn" data-view="dns" title="DNS">
+        <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+      </button>
+      <button class="nav-btn" data-view="settings" title="Настройки">
+        <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+      <button class="nav-btn" data-view="about" title="О программе">
+        <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+      </button>
+      <span class="rail-spacer"></span>
+      <span class="rail-ver">v3.0</span>
+    </nav>
+
+    <main class="views">
+      <!-- ============ ГЛАВНАЯ ============ -->
+      <section class="view active" id="view-home">
+        <button class="power" id="power" aria-label="Включить обход">
+          <span class="ring"></span><span class="halo"></span>
+          <span class="core">
+            <svg viewBox="0 0 24 24" class="glyph" width="60" height="60"><path d="M12 3v9"/><path d="M6.8 6.8a8 8 0 1 0 10.4 0"/></svg>
+          </span>
+        </button>
+        <h1 class="status" id="status">Остановлен</h1>
+        <p class="subtitle" id="subtitle">Нажмите, чтобы включить защиту</p>
+        <div class="chips">
+          <div class="chip"><div class="chip-val" id="v-conn">—</div><div class="chip-lbl">Соединение</div></div>
+          <div class="chip"><div class="chip-val" id="v-ping">—</div><div class="chip-lbl">Пинг</div></div>
+          <div class="chip"><div class="chip-val" id="v-time">—</div><div class="chip-lbl">Время</div></div>
+        </div>
+        <div class="home-actions">
+          <button class="ghost" id="find">Подобрать лучший метод</button>
+          <button class="ghost" id="adv-open">⚙ Дополнительно</button>
+        </div>
+        <div class="progress" id="progress"><span id="progress-bar"></span></div>
+        <div class="progress-text" id="progress-text"></div>
+      </section>
+
+      <!-- ============ ЖУРНАЛ ============ -->
+      <section class="view" id="view-log">
+        <div class="view-head">
+          <div><h2>Журнал</h2><p>События обхода, самопроверки и watchdog</p></div>
+          <button class="btn-sec" id="log-clear">Очистить</button>
+        </div>
+        <div class="console" id="console"></div>
+      </section>
+
+      <!-- ============ WARP ============ -->
+      <section class="view warp-view" id="view-warp">
+        <button class="power warp" id="warp-orb" data-state="off" aria-label="WARP">
+          <span class="ring"></span><span class="halo"></span>
+          <span class="core">
+            <svg viewBox="0 0 24 24" class="glyph" width="56" height="56"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z"/></svg>
+          </span>
+        </button>
+        <h1 class="status" id="warp-status">Проверка…</h1>
+        <p class="subtitle" id="warp-sub">Cloudflare WARP</p>
+        <div class="callout">
+          <span>Требуется установленный Cloudflare WARP (1.1.1.1)</span>
+          <button class="btn-sec" id="warp-dl">↗ Скачать с 1.1.1.1</button>
+        </div>
+      </section>
+
+      <!-- ============ DNS ============ -->
+      <section class="view scroll" id="view-dns">
+        <div class="view-head"><div><h2>DNS</h2><p>Подмена DNS для обхода блокировок (Google DNS + OpenDNS)</p></div></div>
+
+        <div class="setting col">
+          <div class="s-row">
+            <div class="s-txt s-ic"><span class="dns-shield">🛡</span>
+              <div><div class="s-t">Принудительный DNS</div><div class="s-d">Устанавливает Google DNS + OpenDNS на активные адаптеры</div></div>
+            </div>
+            <label class="sw"><input type="checkbox" id="dns-force"><span></span></label>
+          </div>
+          <div class="s-d" id="dns-force-status" style="margin-top:10px">Проверка…</div>
+          <button class="btn-sec" id="dns-reset" style="align-self:flex-start;margin-top:10px">Сбросить DNS на DHCP</button>
+        </div>
+
+        <div class="view-head" style="margin-top:8px"><div><h2 style="font-size:18px">DNS-серверы</h2></div></div>
+        <div class="dns-list" id="dns-list">
+          <div class="dns-row" data-provider="dhcp">
+            <span class="dns-radio"></span><span class="dns-ic auto">⟳</span>
+            <div class="dns-info"><div class="dns-name">Автоматически (DHCP)</div></div>
+          </div>
+          <div class="dns-cat">Популярные</div>
+          <div class="dns-row" data-provider="cloudflare">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#00bcd4">⚡</span>
+            <div class="dns-info"><div class="dns-name">Cloudflare <span class="dns-desc">· Быстрый и приватный</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">1.1.1.1</div>
+          </div>
+          <div class="dns-row" data-provider="google">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#4285F4">G</span>
+            <div class="dns-info"><div class="dns-name">Google DNS <span class="dns-desc">· Надёжный</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">8.8.8.8</div>
+          </div>
+          <div class="dns-row" data-provider="dnssb">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#34D399">🛡</span>
+            <div class="dns-info"><div class="dns-name">Dns.SB <span class="dns-desc">· Без цензуры</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">185.222.222.222</div>
+          </div>
+
+          <div class="dns-cat">Безопасные</div>
+          <div class="dns-row" data-provider="quad9">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#e0218a">🛡</span>
+            <div class="dns-info"><div class="dns-name">Quad9 <span class="dns-desc">· Антивирус</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">9.9.9.9</div>
+          </div>
+          <div class="dns-row" data-provider="adguard">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#67b279;font-size:13px">Ad</span>
+            <div class="dns-info"><div class="dns-name">AdGuard <span class="dns-desc">· Без рекламы</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">94.140.14.14</div>
+          </div>
+          <div class="dns-row" data-provider="opendns">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#f59e0b">👤</span>
+            <div class="dns-info"><div class="dns-name">OpenDNS <span class="dns-desc">· Фильтрация</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">208.67.222.222</div>
+          </div>
+          <div class="dns-row" data-provider="dnsdoh">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#a855f7">🔒</span>
+            <div class="dns-info"><div class="dns-name">dnsdoh.art <span class="dns-desc">· Максимальная приватность</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">194.180.189.33</div>
+          </div>
+
+          <div class="dns-cat">Для ИИ</div>
+          <div class="dns-row" data-provider="xbox">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#b14cff">🎮</span>
+            <div class="dns-info"><div class="dns-name">Xbox DNS <span class="dns-desc">· ChatGPT</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">176.99.11.77</div>
+          </div>
+          <div class="dns-row" data-provider="comss">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#8b7cff">🧠</span>
+            <div class="dns-info"><div class="dns-name">Comss DNS <span class="dns-desc">· ChatGPT</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">83.220.169.155</div>
+          </div>
+          <div class="dns-row" data-provider="malw">
+            <span class="dns-radio"></span><span class="dns-ic" style="color:#3b82f6">💬</span>
+            <div class="dns-info"><div class="dns-name">dns.malw.link <span class="dns-desc">· ChatGPT</span> <span class="badge">DoH</span></div></div>
+            <div class="dns-ip">84.21.189.133</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ НАСТРОЙКИ ============ -->
+      <section class="view scroll" id="view-settings">
+        <div class="view-head"><div><h2>Настройки</h2><p>Параметры запуска и обновления</p></div></div>
+        <div class="setting"><div class="s-txt"><div class="s-t">Автозапуск</div><div class="s-d">Запускать VoidZapret при старте Windows</div></div>
+          <label class="sw"><input type="checkbox" id="set-autostart"><span></span></label></div>
+        <div class="setting"><div class="s-txt"><div class="s-t">Автоподключение</div><div class="s-d">Включать обход при запуске приложения</div></div>
+          <label class="sw"><input type="checkbox" id="set-autoconnect"><span></span></label></div>
+        <div class="setting"><div class="s-txt"><div class="s-t">Автообновление</div><div class="s-d">Проверять новую версию zapret при запуске</div></div>
+          <label class="sw"><input type="checkbox" id="set-autoupdate"><span></span></label></div>
+        <div class="setting"><div class="s-txt"><div class="s-t">Сворачивать в трей</div><div class="s-d">Закрытие окна прячет в трей — обход работает в фоне</div></div>
+          <label class="sw"><input type="checkbox" id="set-tray"><span></span></label></div>
+        <div class="setting col">
+          <div class="s-row"><div class="s-txt"><div class="s-t">Обновление zapret</div><div class="s-d" id="upd-ver">Текущая версия: —</div></div>
+            <button class="btn-pri" id="upd-btn">Обновить</button></div>
+          <div class="progress" id="upd-progress"><span id="upd-bar"></span></div>
+          <div class="progress-text" id="upd-text"></div>
+        </div>
+      </section>
+
+      <!-- ============ О ПРОГРАММЕ ============ -->
+      <section class="view scroll" id="view-about">
+        <div class="view-head"><div><h2>О программе</h2><p>Информация о VoidZapret</p></div></div>
+        <div class="about-card">
+          <div class="about-logo"><span class="brand-dot big"></span> VoidZapret</div>
+          <div class="about-ver" id="about-ver">Приложение v2.0 · zapret —</div>
+          <ul class="about-list">
+            <li>Умный обход DPI-блокировок с авто-подбором и watchdog</li>
+            <li>Обход YouTube, Discord и игр (combined) в один тумблер</li>
+            <li>Поддержка Cloudflare WARP и подмены DNS</li>
+            <li>Современный интерфейс на WebView2</li>
+          </ul>
+          <div class="about-update">
+            <button class="btn-pri" id="app-upd-btn">Проверить обновление</button>
+            <span class="about-upd-text" id="app-upd-text"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Панель «Дополнительно» -->
+  <div class="drawer-backdrop" id="adv-backdrop"></div>
+  <aside class="drawer" id="adv-drawer">
+    <div class="drawer-head">
+      <h3>Дополнительно</h3>
+      <button class="win-btn" id="adv-close">&#10005;</button>
+    </div>
+    <div class="adv-item">
+      <div class="adv-txt"><div class="s-t">QUIC-фикс YouTube</div>
+        <div class="s-d">Блокирует QUIC (UDP/443) — видео идёт по TCP и не буферит</div></div>
+      <label class="sw"><input type="checkbox" id="adv-quic"><span></span></label>
+    </div>
+    <div class="adv-item">
+      <div class="adv-txt"><div class="s-t">IPSet-фильтр</div>
+        <div class="s-d">Обход по списку IP-адресов (для общих стратегий)</div></div>
+      <label class="sw"><input type="checkbox" id="adv-ipset"><span></span></label>
+    </div>
+    <div class="adv-item col">
+      <div class="adv-txt"><div class="s-t">Game Filter</div>
+        <div class="s-d">Игровые порты 1024–65535 в обход</div></div>
+      <div class="seg" id="adv-game">
+        <button data-mode="off">Выкл</button>
+        <button data-mode="tcp">TCP</button>
+        <button data-mode="udp">UDP</button>
+        <button data-mode="all">Оба</button>
+      </div>
+    </div>
+    <div class="adv-note">Game Filter и IPSet применяются перезапуском обхода.</div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

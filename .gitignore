@@ -1,0 +1,23 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- PyInstaller build artifacts ---
+build/
+dist/
+
+# --- runtime config (создаётся рядом с exe; у каждого свой) ---
+zapret_gui_config.json
+
+# --- установщик: бутстрэппер WebView2 (качается отдельно, см. README) ---
+installer/MicrosoftEdgeWebview2Setup.exe
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+*.log
+Thumbs.db
+desktop.ini
