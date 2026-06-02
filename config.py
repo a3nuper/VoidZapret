@@ -11,21 +11,26 @@ CONFIG_FILENAME = "zapret_gui_config.json"
 # Версия самого приложения VoidZapret (для авто-обновления через GitHub Releases).
 APP_VERSION = "3.0"
 
-# Имена .bat в порядке приоритета для автодетекта.
+# Имена .bat в порядке приоритета для автодетекта (оставлен только курируемый набор).
 BAT_PRIORITY = [
-    "general.bat",
-    "general (ALT).bat",
-    "general (ALT2).bat",
-    "general (FAKE TLS AUTO).bat",
-    "general (SIMPLE FAKE).bat",
+    "general (ALT10).bat",
+    "general (ALT11).bat",
+    "general (ALT12).bat",
 ]
+
+# Только эти general-стратегии оставляем (в т.ч. после обновления zapret от Flowseal).
+KEEP_GENERAL_BATS = {
+    "general (ALT10).bat",
+    "general (ALT11).bat",
+    "general (ALT12).bat",
+}
 
 # Файлы, которые не являются стратегиями обхода.
 NON_STRATEGY_BATS = {"service.bat"}
 
-# Префиксы наших собственных .bat (discord*, dbd*), которых нет в релизе Flowseal —
+# Префиксы наших собственных .bat (combined*), которых нет в релизе Flowseal —
 # их сохраняем/восстанавливаем при обновлении.
-CUSTOM_BAT_PREFIXES = ("discord", "dbd", "combined")
+CUSTOM_BAT_PREFIXES = ("combined",)
 
 
 def get_base_dir() -> Path:

@@ -142,6 +142,11 @@ class Api:
         self._restart_if_running()
         return self.advanced_status()
 
+    # ----------------------------------------------------------- апдейт zapret
+    def check_zapret_update(self) -> dict:
+        avail, cur, latest = updater.is_update_available()
+        return {"available": avail, "current": cur, "latest": latest}
+
     # ----------------------------------------------------------- апдейт приложения
     def check_app_update(self) -> dict:
         avail, cur, latest = app_updater.is_update_available()
@@ -332,16 +337,18 @@ class Api:
             threading.Thread(target=self._dns_apply, daemon=True).start()
         if self._config.autoconnect_zapret:
             threading.Timer(0.8, self.toggle).start()
+        # Автообновление: тумблер «Автообновление» управляет И zapret, И самим
+        # приложением VoidZapret.
         if self._config.auto_update:
             threading.Thread(target=self._auto_update, daemon=True).start()
-        # Проверка обновления самого приложения (тихо, тост если есть новее).
-        threading.Thread(target=self._check_app_update_bg, daemon=True).start()
+            threading.Thread(target=self._auto_app_update, daemon=True).start()
 
-    def _check_app_update_bg(self) -> None:
+    def _auto_app_update(self) -> None:
+        """Если включено автообновление и вышла новая версия приложения — ставим."""
         avail, _cur, latest = app_updater.is_update_available()
         if avail:
-            self._push("onNotify", f"Доступна новая версия приложения {latest} — "
-                                   f"обнови в «О программе»")
+            self._push("onNotify", f"Доступна VoidZapret {latest} — обновляю…")
+            self._app_update_worker()   # скачает установщик, запустит, закроет приложение
 
     def _auto_update(self) -> None:
         try:

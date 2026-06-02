@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from config import (
-    CUSTOM_BAT_PREFIXES, get_bundled_zapret_dir, get_local_version,
-    get_writable_zapret_dir,
+    CUSTOM_BAT_PREFIXES, KEEP_GENERAL_BATS, get_bundled_zapret_dir,
+    get_local_version, get_writable_zapret_dir,
 )
 from core.process_manager import kill_winws
 
@@ -108,6 +108,26 @@ def _preserve_custom_bats(target: Path) -> None:
                 pass
 
 
+def _trim_strategies(target: Path) -> None:
+    """Оставляет только курируемый набор стратегий после обновления Flowseal.
+
+    Релиз приносит все general*.bat — удаляем всё, кроме ALT10/11/12, а также любые
+    dbd*/discord* (они нам больше не нужны). combined* сохраняются как custom.
+    """
+    for p in target.glob("*.bat"):
+        low = p.name.lower()
+        if low.startswith(("dbd", "discord")):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+        elif low.startswith("general") and p.name not in KEEP_GENERAL_BATS:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
 def download_and_install(
     on_log: Callable[[str], None],
     on_progress: Optional[Callable[[float], None]] = None,
@@ -150,5 +170,6 @@ def download_and_install(
             raise UpdateError(f"Не удалось скопировать файлы: {exc}") from exc
 
     _preserve_custom_bats(target)
+    _trim_strategies(target)   # оставляем только ALT10/11/12 + combined
     on_log(f"Готово. Установлена версия {tag}")
     return tag

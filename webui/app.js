@@ -24,6 +24,7 @@
     navBtns.forEach((b) => b.classList.toggle("active", b.dataset.view === name));
     if (name === "warp") warpRefreshNow();
     if (name === "dns") dnsRefreshNow();
+    if (name === "settings") zapretUpdateCheck();
   }
   navBtns.forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
 
@@ -100,11 +101,25 @@
   bindToggle("set-autoupdate", "set_autoupdate");
   bindToggle("set-tray", "set_tray");
   $("upd-btn").addEventListener("click", () => {
+    if ($("upd-btn").disabled) return;
     $("upd-btn").disabled = true; $("upd-btn").textContent = "Обновление…";
     $("upd-progress").classList.add("show"); $("upd-bar").style.width = "0%";
     $("upd-text").style.color = ""; $("upd-text").textContent = "Запуск…";
     call("update_zapret");
   });
+  // Кнопка «Обновить» неактивна, если новой версии zapret от Flowseal нет.
+  async function zapretUpdateCheck() {
+    const b = $("upd-btn");
+    b.disabled = true; b.textContent = "Проверка…";
+    const d = await call("check_zapret_update");
+    if (d && d.available) {
+      b.disabled = false; b.textContent = "Обновить";
+      $("upd-ver").textContent = `Доступна версия ${d.latest} (текущая ${d.current})`;
+    } else {
+      b.disabled = true; b.textContent = "Актуально";
+      $("upd-ver").textContent = `Установлена последняя версия: ${d ? d.current : "—"}`;
+    }
+  }
   // обновление самого приложения
   $("app-upd-btn").addEventListener("click", async () => {
     const btn = $("app-upd-btn"), t = $("app-upd-text");
