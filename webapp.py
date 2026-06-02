@@ -379,8 +379,14 @@ class Api:
         self._orch.start(bats, list(COMBINED_HOSTS), preferred_name=self._strat_name())
 
     def _engine_calibrate(self, epoch: int):
-        """Перебирает техники движка, возвращает первую рабочую (strat, ok, total, lat)."""
+        """Пробует все техники, возвращает ЛУЧШУЮ (по связи, затем по пингу).
+
+        Принимаем движок, если пробил почти всё (ok >= total-1, минимум 2) — одна
+        цель может лежать по своей причине (геоблок и т.п.). Иначе → combined.
+        """
         hosts = list(COMBINED_HOSTS)
+        total = len(hosts)
+        best = None  # (strat, ok, total, lat)
         for strat in engine_strategies.STRATEGIES:
             if epoch != self._start_epoch or not self._want:
                 return None
@@ -391,21 +397,30 @@ class Api:
             time.sleep(0.5)
             self._engine.set_strategy(strat)
             if not self._engine.start():
-                # авто-сброс драйвера и одна повторная попытка (конфликт версий WinDivert)
                 self._push("onLog", "[engine] сбрасываю WinDivert и пробую снова…", "system")
                 reset_windivert()
                 time.sleep(1.0)
                 if not self._engine.start():
                     self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
                     return None
-            time.sleep(3.0)  # инициализация + прогрев
-            ok, total, lat = probe_hosts(hosts, timeout=4.0)
+            time.sleep(3.0)
+            ok, _t, lat = probe_hosts(hosts, timeout=4.0)
             self._push("onLog", f"[engine] {strat}: связь {ok}/{total}"
                                 + (f", ~{lat:.0f} мс" if ok else ""), "system")
-            # Берём технику движка ТОЛЬКО если пробила ВСЁ — иначе уходим на combined
-            # (надёжность важнее: для публичного релиза combined должен спасать).
-            if total and ok == total:
-                return (strat, ok, total, lat)
+            if best is None or (ok, -(lat or 9999)) > (best[1], -(best[3] or 9999)):
+                best = (strat, ok, total, lat)
+            if ok == total:        # идеально — дальше не ищем
+                break
+        if best and best[1] >= max(2, total - 1):
+            # поднимаем движок именно на лучшей технике (после перебора крутится последняя)
+            if epoch != self._start_epoch or not self._want:
+                return None
+            self._engine.stop(); kill_winws(); time.sleep(0.5)
+            self._engine.set_strategy(best[0])
+            if not self._engine.start():
+                return None
+            time.sleep(1.5)
+            return best
         return None
 
     def _engine_watchdog(self, epoch: int) -> None:

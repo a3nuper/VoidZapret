@@ -162,19 +162,44 @@ class VoidEngine:
         self._w.send(p)
 
     def _send_fake(self, packet) -> None:
-        """Поддельный ClientHello (невинный SNI, битый checksum + низкий TTL)."""
+        """Поддельный ClientHello (невинный SNI) с fooling=badseq+низкий TTL.
+
+        seq уводим далеко за окно → сервер игнорирует пакет как out-of-window, а DPI
+        всё равно парсит ClientHello (видит «www.google.com» → пропускает соединение).
+        Это надёжнее битого checksum (не зависит от пересчёта в pydivert).
+        """
         fake = self._clone(packet)
         fake.payload = strategies.build_fake_clienthello()
         try:
+            fake.tcp.seq_num = (packet.tcp.seq_num - 0x40000) & _MASK   # badseq
             fake.ipv4.ttl = strategies.FAKE_TTL
             fake.ipv4.ident = 0
         except Exception:
             pass
-        self._w.send(fake, recalculate_checksum=False)  # битый checksum → сервер дропнет
+        self._w.send(fake)   # валидный checksum, но out-of-window seq → сервер дропнет
 
     def _apply(self, packet, data: bytes, pos: int) -> None:
         seq = packet.tcp.seq_num
         st = self._strategy
+
+        if st in ("multidisorder", "multifakedisorder"):
+            if st == "multifakedisorder":
+                self._send_fake(packet)
+            # Несколько точек разрыва: начало записи + середина SNI → 3 сегмента,
+            # отправляем в обратном порядке (disorder).
+            cuts = sorted({c for c in (3, pos) if 0 < c < len(data)})
+            segs, prev = [], 0
+            for c in cuts:
+                segs.append(data[prev:c]); prev = c
+            segs.append(data[prev:])
+            pkts, off = [], 0
+            for s in segs:
+                p = self._clone(packet); p.payload = s
+                p.tcp.seq_num = (seq + off) & _MASK; off += len(s)
+                pkts.append(p)
+            for p in reversed(pkts):
+                self._send_seg(p)
+            return
 
         if st in ("split", "disorder", "fakedisorder"):
             if st == "fakedisorder":

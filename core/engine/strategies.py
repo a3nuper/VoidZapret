@@ -7,7 +7,8 @@ import os
 
 # Порядок калибровки: сильные/проверенные техники первыми. Первая прошедшая —
 # рабочий метод для данного провайдера.
-STRATEGIES = ["fakedisorder", "disorder", "fakesplit", "fake", "split", "seqovl"]
+STRATEGIES = ["multifakedisorder", "fakedisorder", "multidisorder", "disorder",
+              "fakesplit", "fake", "split", "seqovl"]
 
 # Низкий TTL для fake-пакета (умирает в пути после DPI, не доходит до сервера).
 FAKE_TTL = 8
