@@ -1,0 +1,11 @@
+# .bat/.cmd ОБЯЗАТЕЛЬНО с CRLF — иначе cmd.exe ломает разбор (winws не стартует).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Бинарники zapret — как есть, без нормализации переводов строк.
+*.exe binary
+*.dll binary
+*.sys binary
+*.bin binary
+*.ico binary
+*.png binary
