@@ -23,9 +23,11 @@ from config import (
 from core import app_updater, autostart, dns, quic, updater, warp, zapret_flags
 from core.admin import is_admin
 from config import get_winws_path
-from core.method_tester import MethodTester, COMBINED_HOSTS, _probe_host
+from core.method_tester import MethodTester, COMBINED_HOSTS, _probe_host, probe_hosts
 from core.orchestrator import Orchestrator, ST_FAILED, ST_RUNNING
 from core.process_manager import kill_winws, reset_windivert
+from core.engine.engine import VoidEngine
+from core.engine import strategies as engine_strategies
 from ui.tray import Tray
 
 
@@ -71,6 +73,13 @@ class Api:
         self._updating = False
         self._eval_lock = threading.Lock()  # сериализует evaluate_js (иначе дедлок)
         self._ping_on = False
+        # Наш собственный движок (приоритетный метод).
+        self._engine = VoidEngine(on_log=lambda m: self._push("onLog", m, "output"))
+        self._engine_on = False
+        self._engine_strategy = ""
+        self._engine_stats = (0, 0, 0.0)
+        self._engine_start = 0.0
+        self._start_epoch = 0     # инвалидация устаревшего _smart_start
         self._orch = Orchestrator(on_state=self._on_state, on_log=self._on_log)
         self._tester = MethodTester()
         self._tray = Tray(
@@ -299,17 +308,91 @@ class Api:
             return False
         if self._want:
             self._want = False
+            self._start_epoch += 1
+            self._engine.stop(); self._engine_on = False
             self._orch.stop()
             self._push("onState", "off", "")
             return False
-        bats = self._active_candidates()
-        if not bats:
+        if not self._active_candidates() and not VoidEngine.available():
             self._push("onState", "error", "Стратегии не найдены")
             return False
         self._want = True
+        self._start_epoch += 1
         self._push("onState", "connecting", "Подключение…")
-        self._orch.start(bats, list(COMBINED_HOSTS), preferred_name=self._strat_name())
+        threading.Thread(target=self._smart_start, args=(self._start_epoch,),
+                         daemon=True).start()
         return True
+
+    def _smart_start(self, epoch: int) -> None:
+        """Сначала пробуем НАШ движок (приоритет), иначе — combined/general (winws)."""
+        # 1) Наш VoidEngine — калибровка по техникам.
+        if VoidEngine.available():
+            best = self._engine_calibrate(epoch)
+            if epoch != self._start_epoch or not self._want:
+                return
+            if best is not None:
+                strat, ok, total, lat = best
+                self._engine_on = True
+                self._engine_strategy = strat
+                self._engine_stats = (ok, total, lat)
+                self._engine_start = time.time()
+                ping = f"  ·  ~{lat:.0f} мс" if lat else ""
+                self._push("onLog", f"✓ Свой метод работает: {strat} ({ok}/{total})", "ok")
+                self._push("onState", "running",
+                           f"Свой метод · {strat} · связь {ok}/{total}{ping}")
+                threading.Thread(target=self._engine_watchdog, args=(epoch,),
+                                 daemon=True).start()
+                return
+            self._engine.stop()
+            self._push("onLog", "Свой метод не пробил — перехожу на combined", "system")
+        # 2) Фолбэк — оркестратор на .bat (combined + general).
+        if epoch != self._start_epoch or not self._want:
+            return
+        bats = self._active_candidates()
+        if not bats:
+            self._push("onState", "error", "Ни свой метод, ни combined не сработали")
+            self._want = False
+            return
+        self._orch.start(bats, list(COMBINED_HOSTS), preferred_name=self._strat_name())
+
+    def _engine_calibrate(self, epoch: int):
+        """Перебирает техники движка, возвращает первую рабочую (strat, ok, total, lat)."""
+        hosts = list(COMBINED_HOSTS)
+        for strat in engine_strategies.STRATEGIES:
+            if epoch != self._start_epoch or not self._want:
+                return None
+            self._push("onState", "connecting", f"Свой метод: проверка «{strat}»…")
+            self._push("onLog", f"[engine] пробую технику {strat}…", "system")
+            self._engine.stop()
+            kill_winws()
+            time.sleep(0.5)
+            self._engine.set_strategy(strat)
+            if not self._engine.start():
+                self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
+                return None
+            time.sleep(3.0)  # инициализация + прогрев
+            ok, total, lat = probe_hosts(hosts, timeout=4.0)
+            self._push("onLog", f"[engine] {strat}: связь {ok}/{total}"
+                                + (f", ~{lat:.0f} мс" if ok else ""), "system")
+            if ok >= max(1, (total + 1) // 2):
+                return (strat, ok, total, lat)
+        return None
+
+    def _engine_watchdog(self, epoch: int) -> None:
+        while self._engine_on and epoch == self._start_epoch and self._want:
+            time.sleep(25.0)
+            if not (self._engine_on and epoch == self._start_epoch and self._want):
+                return
+            ok, total, lat = probe_hosts(list(COMBINED_HOSTS), timeout=4.0)
+            self._engine_stats = (ok, total, lat) if ok else self._engine_stats
+            if ok < max(1, (total + 1) // 2):
+                self._push("onLog", "Свой метод просел — переключаюсь на combined", "system")
+                self._push("onState", "switching", "Переключение на combined…")
+                self._engine.stop(); self._engine_on = False
+                if epoch == self._start_epoch and self._want:
+                    self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
+                                     preferred_name=self._strat_name())
+                return
 
     def find_best(self) -> bool:
         if self._tester.is_running():
@@ -380,6 +463,7 @@ class Api:
     def _quit(self) -> None:
         self._tray.stop()
         try:
+            self._engine.stop()
             self._orch.stop()
         finally:
             try:
@@ -486,7 +570,13 @@ class Api:
     def _stats_loop(self) -> None:
         while True:
             time.sleep(1.0)
-            if self._want and self._orch.is_running():
+            if not self._want:
+                continue
+            if self._engine_on:
+                ok, total, lat = self._engine_stats
+                up = time.time() - self._engine_start if self._engine_start else 0
+                self._push("onStats", ok, total, round(lat), round(up))
+            elif self._orch.is_running():
                 ok, total, lat = self._orch.get_stats()
                 up = self._orch.get_uptime() or 0
                 self._push("onStats", ok, total, round(lat), round(up))

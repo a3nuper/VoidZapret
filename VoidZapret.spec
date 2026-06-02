@@ -11,8 +11,8 @@ binaries = []
 # pystray на Windows подгружает бэкенд динамически.
 hiddenimports = ['pystray._win32']
 
-# WebView-стек: pywebview (+ JS-ассеты, WebView2 DLL) и pythonnet/clr_loader.
-for pkg in ('webview', 'pythonnet', 'clr_loader'):
+# WebView-стек + pydivert (наш движок, тащит WinDivert.dll/.sys).
+for pkg in ('webview', 'pythonnet', 'clr_loader', 'pydivert'):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b
