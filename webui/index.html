@@ -57,8 +57,8 @@
         <h1 class="status" id="status">Остановлен</h1>
         <p class="subtitle" id="subtitle">Нажмите, чтобы включить защиту</p>
         <div class="chips">
-          <div class="chip"><div class="chip-val" id="v-conn">—</div><div class="chip-lbl">Соединение</div></div>
-          <div class="chip"><div class="chip-val" id="v-ping">—</div><div class="chip-lbl">Пинг</div></div>
+          <div class="chip clickable" id="chip-conn"><div class="chip-val" id="v-conn">—</div><div class="chip-lbl">Соединение ›</div></div>
+          <div class="chip clickable" id="chip-ping"><div class="chip-val" id="v-ping">—</div><div class="chip-lbl">Пинг ›</div></div>
           <div class="chip"><div class="chip-val" id="v-time">—</div><div class="chip-lbl">Время</div></div>
         </div>
         <div class="home-actions">
@@ -242,6 +242,19 @@
     </div>
     <div class="adv-note">Game Filter и IPSet применяются перезапуском обхода.</div>
   </aside>
+
+  <!-- Попапы чипов -->
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal" id="conn-modal">
+    <div class="modal-head"><h3>Соединение</h3><button class="win-btn" data-modal-close>&#10005;</button></div>
+    <div class="conn-list" id="conn-list"><div class="conn-empty">Проверка…</div></div>
+  </div>
+  <div class="modal" id="ping-modal">
+    <div class="modal-head"><h3>Пинг до YouTube</h3><button class="win-btn" data-modal-close>&#10005;</button></div>
+    <div class="ping-big"><span id="ping-num">—</span><span class="ping-unit">мс</span></div>
+    <canvas id="ping-canvas" width="540" height="170"></canvas>
+    <div class="ping-legend"><span id="ping-min">—</span><span>последние 60 с</span><span id="ping-max">—</span></div>
+  </div>
 
   <div class="toast" id="toast"></div>
   <script src="app.js"></script>

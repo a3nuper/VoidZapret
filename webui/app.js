@@ -157,6 +157,77 @@
     });
   });
 
+  // ---------------- попапы чипов (Соединение / Пинг) ----------------
+  const backdrop = $("modal-backdrop");
+  let connTimer = null;
+  function closeModals() {
+    $("conn-modal").classList.remove("open");
+    $("ping-modal").classList.remove("open");
+    backdrop.classList.remove("open");
+    if (connTimer) { clearInterval(connTimer); connTimer = null; }
+    call("ping_stop"); pingStop();
+  }
+  backdrop.addEventListener("click", closeModals);
+  document.querySelectorAll("[data-modal-close]").forEach((b) => b.addEventListener("click", closeModals));
+
+  // — Соединение —
+  async function connRefresh() {
+    const d = await call("connection_details");
+    const list = $("conn-list");
+    if (!d || !d.length) { list.innerHTML = '<div class="conn-empty">Нет данных</div>'; return; }
+    list.innerHTML = d.map((s) =>
+      `<div class="conn-row"><span class="conn-dot ${s.ok ? "ok" : "bad"}"></span>` +
+      `<span class="conn-name">${s.name}</span>` +
+      `<span class="conn-ms">${s.ok ? (s.ms ? s.ms + " мс" : "OK") : "нет связи"}</span></div>`).join("");
+  }
+  $("chip-conn").addEventListener("click", () => {
+    $("conn-list").innerHTML = '<div class="conn-empty">Проверка…</div>';
+    $("conn-modal").classList.add("open"); backdrop.classList.add("open");
+    connRefresh(); connTimer = setInterval(connRefresh, 4000);
+  });
+
+  // — Пинг (живой график + плавно «бегущая» цифра) —
+  const pCanvas = $("ping-canvas"), pCtx = pCanvas.getContext("2d");
+  let pingData = [], pShown = 0, pTarget = 0, pTimer = null;
+  function stepDelay(d) { d = Math.abs(d); return d <= 5 ? 90 : d <= 15 ? 55 : d <= 30 ? 30 : d <= 50 ? 18 : 9; }
+  function pingTick() {
+    if (pShown === pTarget) { pTimer = null; return; }
+    pShown += Math.sign(pTarget - pShown);
+    $("ping-num").textContent = pShown;
+    pTimer = setTimeout(pingTick, stepDelay(pTarget - pShown));
+  }
+  function setPingNum(v) { pTarget = Math.round(v); if (!pTimer) pingTick(); }
+  function pingStop() { if (pTimer) { clearTimeout(pTimer); pTimer = null; } }
+  function drawPing() {
+    const w = pCanvas.width, h = pCanvas.height; pCtx.clearRect(0, 0, w, h);
+    const vals = pingData.filter((v) => v > 0);
+    const min = vals.length ? Math.min(...vals) : 0, max = vals.length ? Math.max(...vals) : 0;
+    $("ping-min").textContent = vals.length ? min + " мс" : "—";
+    $("ping-max").textContent = vals.length ? max + " мс" : "—";
+    pCtx.strokeStyle = "rgba(255,255,255,0.05)"; pCtx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) { const y = h * i / 4; pCtx.beginPath(); pCtx.moveTo(0, y); pCtx.lineTo(w, y); pCtx.stroke(); }
+    if (pingData.length < 2) return;
+    const lo = Math.max(0, min - 10), hi = max + 10, range = Math.max(1, hi - lo);
+    const stepX = w / 59;
+    const grad = pCtx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, "#5E5CE6"); grad.addColorStop(1, "#8B4DF7");
+    pCtx.strokeStyle = grad; pCtx.lineWidth = 2.5; pCtx.lineJoin = "round";
+    pCtx.beginPath(); let started = false;
+    const n = pingData.length;
+    pingData.forEach((v, i) => {
+      const x = w - (n - 1 - i) * stepX;
+      if (v <= 0) { started = false; return; }
+      const y = h - ((v - lo) / range) * (h - 14) - 7;
+      if (!started) { pCtx.moveTo(x, y); started = true; } else pCtx.lineTo(x, y);
+    });
+    pCtx.stroke();
+  }
+  $("chip-ping").addEventListener("click", () => {
+    pingData = []; pShown = 0; pTarget = 0; $("ping-num").textContent = "…"; drawPing();
+    $("ping-modal").classList.add("open"); backdrop.classList.add("open");
+    call("ping_start");
+  });
+
   // ---------------- титулбар ----------------
   $("btn-min").addEventListener("click", () => call("minimize"));
   $("btn-close").addEventListener("click", () => call("close_window"));
@@ -230,6 +301,11 @@
       if (text) t.textContent = text;
     },
     onDnsStatus(d) { applyDns(d); },
+    onPing(ms) {
+      pingData.push(ms); if (pingData.length > 60) pingData.shift();
+      drawPing();
+      if (ms > 0) setPingNum(ms); else $("ping-num").textContent = "✕";
+    },
     onNotify(msg) { toast(msg); },
   };
 

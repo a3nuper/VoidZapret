@@ -239,6 +239,36 @@ body{background:var(--bg);color:var(--text);overflow:hidden;position:relative;
   box-shadow:0 4px 14px rgba(110,108,245,.4);}
 .adv-note{font-size:11px;color:var(--muted);padding:0 4px;}
 
+/* ---------- Попапы чипов ---------- */
+.chip.clickable{cursor:pointer;transition:all .2s var(--ease);}
+.chip.clickable:hover{border-color:rgba(124,108,255,.4);box-shadow:0 0 22px rgba(110,108,245,.28);transform:translateY(-2px);}
+.modal-backdrop{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.5);opacity:0;
+  pointer-events:none;transition:opacity .3s var(--ease);}
+.modal-backdrop.open{opacity:1;pointer-events:auto;}
+.modal{position:fixed;z-index:31;left:50%;top:50%;transform:translate(-50%,-46%) scale(.96);
+  width:580px;max-width:92vw;background:rgba(18,19,28,.97);backdrop-filter:blur(26px) saturate(150%);
+  border:1px solid var(--glass-brd);border-radius:22px;box-shadow:0 30px 80px rgba(0,0,0,.6);
+  padding:20px 22px;opacity:0;pointer-events:none;transition:opacity .3s var(--ease),transform .3s var(--ease);}
+.modal.open{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1);}
+.modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.modal-head h3{font-size:19px;font-weight:700;}
+.conn-list{display:flex;flex-direction:column;gap:10px;}
+.conn-empty{color:var(--dim);font-size:14px;padding:12px 2px;}
+.conn-row{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;
+  background:var(--glass);border:1px solid var(--glass-brd);}
+.conn-dot{width:12px;height:12px;border-radius:50%;flex:0 0 auto;background:var(--muted);transition:all .3s var(--ease);}
+.conn-dot.ok{background:var(--grn);box-shadow:0 0 12px rgba(48,209,88,.7);}
+.conn-dot.bad{background:var(--red);box-shadow:0 0 12px rgba(255,69,58,.6);}
+.conn-name{flex:1;font-size:15px;font-weight:600;}
+.conn-ms{font-size:13px;color:var(--dim);font-family:"Consolas",monospace;}
+.ping-big{text-align:center;margin:6px 0 14px;font-weight:800;letter-spacing:-1px;}
+.ping-big #ping-num{font-size:58px;background:linear-gradient(135deg,#7da7ff,var(--ind),var(--vio));
+  -webkit-background-clip:text;background-clip:text;color:transparent;}
+.ping-unit{font-size:20px;color:var(--dim);margin-left:8px;}
+#ping-canvas{width:100%;height:170px;display:block;border-radius:14px;background:rgba(6,7,11,.5);
+  border:1px solid var(--glass-brd);}
+.ping-legend{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:8px;}
+
 /* ---------- Тост ---------- */
 .toast{position:fixed;right:24px;top:56px;z-index:20;max-width:320px;padding:14px 18px;border-radius:14px;
   background:rgba(28,26,51,.92);border:1px solid rgba(124,108,255,.35);color:var(--text);font-size:13px;

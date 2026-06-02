@@ -25,10 +25,14 @@ class Tray:
         icon_path: Optional[Path],
         on_show: Callable[[], None],
         on_quit: Callable[[], None],
+        on_toggle: Optional[Callable[[], None]] = None,
+        is_running: Optional[Callable[[], bool]] = None,
     ) -> None:
         self._icon_path = icon_path
         self._on_show = on_show
         self._on_quit = on_quit
+        self._on_toggle = on_toggle
+        self._is_running = is_running or (lambda: False)
         self._icon = None
         self._thread: Optional[threading.Thread] = None
 
@@ -52,13 +56,25 @@ class Tray:
         """Показывает иконку в трее (если ещё не показана)."""
         if not _AVAILABLE or self._icon is not None:
             return
-        menu = pystray.Menu(
-            pystray.MenuItem("Открыть VoidZapret", self._show, default=True),
-            pystray.MenuItem("Выход", self._quit),
-        )
-        self._icon = pystray.Icon("VoidZapret", self._image(), "VoidZapret", menu)
+        items = [pystray.MenuItem("Открыть VoidZapret", self._show, default=True)]
+        if self._on_toggle is not None:
+            items.append(pystray.MenuItem(
+                lambda _i: "Остановить обход" if self._is_running() else "Запустить обход",
+                self._toggle))
+        items.append(pystray.MenuItem("Выход", self._quit))
+        self._icon = pystray.Icon("VoidZapret", self._image(), "VoidZapret",
+                                  pystray.Menu(*items))
         self._thread = threading.Thread(target=self._icon.run, daemon=True)
         self._thread.start()
+
+    def _toggle(self) -> None:
+        if self._on_toggle:
+            self._on_toggle()
+        if self._icon is not None:
+            try:
+                self._icon.update_menu()  # обновить подпись пункта
+            except Exception:
+                pass
 
     def _show(self) -> None:
         self.stop()

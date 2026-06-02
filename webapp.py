@@ -23,7 +23,7 @@ from config import (
 from core import app_updater, autostart, dns, quic, updater, warp, zapret_flags
 from core.admin import is_admin
 from config import get_winws_path
-from core.method_tester import MethodTester, COMBINED_HOSTS
+from core.method_tester import MethodTester, COMBINED_HOSTS, _probe_host
 from core.orchestrator import Orchestrator, ST_FAILED, ST_RUNNING
 from core.process_manager import kill_winws, reset_windivert
 from ui.tray import Tray
@@ -35,6 +35,32 @@ def _webui_path() -> str:
     return str(root / "webui" / "index.html")
 
 
+# Сервисы для попапа «Соединение» (имя → хост проверки).
+SERVICES = [
+    ("YouTube", "www.youtube.com"),
+    ("Discord", "discord.com"),
+    ("Epic / Игры", "www.epicgames.com"),
+    ("Instagram", "instagram.com"),
+    ("X / Twitter", "x.com"),
+]
+
+# Хост для живого пинга (TCP-connect).
+_PING_HOST = "www.youtube.com"
+
+
+def _tcp_ping(host: str = _PING_HOST, port: int = 443, timeout: float = 2.0):
+    """Время TCP-коннекта в мс (или None при ошибке)."""
+    import socket
+    import time as _t
+    start = _t.monotonic()
+    try:
+        s = socket.create_connection((host, port), timeout=timeout)
+        s.close()
+        return (_t.monotonic() - start) * 1000.0
+    except OSError:
+        return None
+
+
 class Api:
     """Мост JS ↔ Python."""
 
@@ -44,12 +70,15 @@ class Api:
         self._want = False
         self._updating = False
         self._eval_lock = threading.Lock()  # сериализует evaluate_js (иначе дедлок)
+        self._ping_on = False
         self._orch = Orchestrator(on_state=self._on_state, on_log=self._on_log)
         self._tester = MethodTester()
         self._tray = Tray(
             icon_path=get_icon_path(),
             on_show=self._restore_from_tray,
             on_quit=self._quit,
+            on_toggle=lambda: self.toggle(),
+            is_running=lambda: self._want,
         )
         threading.Thread(target=self._stats_loop, daemon=True).start()
 
@@ -116,6 +145,41 @@ class Api:
     def warp_download(self) -> None:
         import webbrowser
         webbrowser.open("https://1.1.1.1/")
+
+    # ----------------------------------------------------------- попап «Соединение»
+    def connection_details(self) -> list:
+        """Проверяет каждый сервис отдельно → [{name, ok, ms}] для попапа."""
+        from concurrent.futures import ThreadPoolExecutor
+        res = [None] * len(SERVICES)
+        pool = ThreadPoolExecutor(max_workers=len(SERVICES))
+        futs = {pool.submit(_probe_host, host, 3.0): i
+                for i, (_name, host) in enumerate(SERVICES)}
+        deadline = time.monotonic() + 5
+        for fut, i in futs.items():
+            try:
+                ok, lat = fut.result(timeout=max(0.1, deadline - time.monotonic()))
+            except Exception:
+                ok, lat = False, None
+            res[i] = {"name": SERVICES[i][0], "ok": bool(ok),
+                      "ms": round(lat) if lat else 0}
+        pool.shutdown(wait=False)
+        return [r for r in res if r]
+
+    # ----------------------------------------------------------- живой пинг
+    def ping_start(self) -> None:
+        if self._ping_on:
+            return
+        self._ping_on = True
+        threading.Thread(target=self._ping_loop, daemon=True).start()
+
+    def ping_stop(self) -> None:
+        self._ping_on = False
+
+    def _ping_loop(self) -> None:
+        while self._ping_on:
+            ms = _tcp_ping()
+            self._push("onPing", round(ms) if ms is not None else -1)
+            time.sleep(1.0)
 
     # ----------------------------------------------------------- Дополнительно
     def advanced_status(self) -> dict:
