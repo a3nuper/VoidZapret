@@ -131,12 +131,22 @@ class VoidEngine:
     def _clone(self, packet):
         return pydivert.Packet(bytearray(packet.raw), packet.interface, packet.direction)
 
+    def _send_seg(self, p) -> None:
+        """Отправка реального сегмента с ip.ident=0 (как ip-id=zero у combined —
+        нужно для пробития Google/YouTube-видео)."""
+        try:
+            p.ipv4.ident = 0
+        except Exception:
+            pass
+        self._w.send(p)
+
     def _send_fake(self, packet) -> None:
         """Поддельный ClientHello (невинный SNI, битый checksum + низкий TTL)."""
         fake = self._clone(packet)
         fake.payload = strategies.build_fake_clienthello()
         try:
             fake.ipv4.ttl = strategies.FAKE_TTL
+            fake.ipv4.ident = 0
         except Exception:
             pass
         self._w.send(fake, recalculate_checksum=False)  # битый checksum → сервер дропнет
@@ -153,19 +163,19 @@ class VoidEngine:
             p2.tcp.seq_num = (seq + pos) & _MASK
             order = (p1, p2) if st == "split" else (p2, p1)  # disorder → обратный порядок
             for p in order:
-                self._w.send(p)
+                self._send_seg(p)
             return
 
         if st in ("fake", "fakesplit"):
             self._send_fake(packet)
             if st == "fake":
                 real = self._clone(packet); real.payload = data
-                self._w.send(real)
+                self._send_seg(real)
             else:  # fakesplit
                 p1 = self._clone(packet); p1.payload = data[:pos]
                 p2 = self._clone(packet); p2.payload = data[pos:]
                 p2.tcp.seq_num = (seq + pos) & _MASK
-                self._w.send(p1); self._w.send(p2)
+                self._send_seg(p1); self._send_seg(p2)
             return
 
         if st == "seqovl":
@@ -176,7 +186,7 @@ class VoidEngine:
             seg2 = self._clone(packet)
             seg2.payload = data[pos:]
             seg2.tcp.seq_num = (seq + pos) & _MASK
-            self._w.send(seg1); self._w.send(seg2)
+            self._send_seg(seg1); self._send_seg(seg2)
             return
 
         # неизвестная техника — пропускаем

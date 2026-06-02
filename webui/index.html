@@ -42,7 +42,7 @@
         <svg viewBox="0 0 24 24" class="ic"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
       </button>
       <span class="rail-spacer"></span>
-      <span class="rail-ver">v3.0</span>
+      <span class="rail-ver">v3.1</span>
     </nav>
 
     <main class="views">
@@ -222,25 +222,10 @@
     </div>
     <div class="adv-item">
       <div class="adv-txt"><div class="s-t">QUIC-фикс YouTube</div>
-        <div class="s-d">Блокирует QUIC (UDP/443) — видео идёт по TCP и не буферит</div></div>
+        <div class="s-d">Блокирует QUIC (UDP/443) — видео и приложения идут по TCP и не буферят</div></div>
       <label class="sw"><input type="checkbox" id="adv-quic"><span></span></label>
     </div>
-    <div class="adv-item">
-      <div class="adv-txt"><div class="s-t">IPSet-фильтр</div>
-        <div class="s-d">Обход по списку IP-адресов (для общих стратегий)</div></div>
-      <label class="sw"><input type="checkbox" id="adv-ipset"><span></span></label>
-    </div>
-    <div class="adv-item col">
-      <div class="adv-txt"><div class="s-t">Game Filter</div>
-        <div class="s-d">Игровые порты 1024–65535 в обход</div></div>
-      <div class="seg" id="adv-game">
-        <button data-mode="off">Выкл</button>
-        <button data-mode="tcp">TCP</button>
-        <button data-mode="udp">UDP</button>
-        <button data-mode="all">Оба</button>
-      </div>
-    </div>
-    <div class="adv-note">Game Filter и IPSet применяются перезапуском обхода.</div>
+    <div class="adv-note">Движок сам глушит QUIC во время работы — этот тумблер держит блок и после остановки.</div>
   </aside>
 
   <!-- Попапы чипов -->

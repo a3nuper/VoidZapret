@@ -9,7 +9,7 @@ from pathlib import Path
 CONFIG_FILENAME = "zapret_gui_config.json"
 
 # Версия самого приложения VoidZapret (для авто-обновления через GitHub Releases).
-APP_VERSION = "3.0"
+APP_VERSION = "3.1"
 
 # Имена .bat в порядке приоритета для автодетекта (оставлен только курируемый набор).
 BAT_PRIORITY = [
@@ -18,12 +18,9 @@ BAT_PRIORITY = [
     "general (ALT12).bat",
 ]
 
-# Только эти general-стратегии оставляем (в т.ч. после обновления zapret от Flowseal).
-KEEP_GENERAL_BATS = {
-    "general (ALT10).bat",
-    "general (ALT11).bat",
-    "general (ALT12).bat",
-}
+# general-стратегии больше не используем (наш движок + combined-фолбэк) — после
+# обновления zapret все general удаляются.
+KEEP_GENERAL_BATS: set = set()
 
 # Файлы, которые не являются стратегиями обхода.
 NON_STRATEGY_BATS = {"service.bat"}

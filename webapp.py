@@ -351,15 +351,15 @@ class Api:
                 self._engine_stats = (ok, total, lat)
                 self._engine_start = time.time()
                 ping = f"  ·  ~{lat:.0f} мс" if lat else ""
-                self._push("onLog", f"✓ Свой метод работает: {strat} ({ok}/{total})", "ok")
+                self._push("onLog", f"✓ Стратегия {strat} работает ({ok}/{total})", "ok")
                 self._push("onState", "running",
-                           f"Свой метод · {strat} · связь {ok}/{total}{ping}")
+                           f"Стратегия {strat} · связь {ok}/{total}{ping}")
                 threading.Thread(target=self._engine_watchdog, args=(epoch,),
                                  daemon=True).start()
                 return
             self._engine.stop()
             self._restore_quic()   # вернуть QUIC для combined (winws сам рулит QUIC)
-            self._push("onLog", "Свой метод не пробил — перехожу на combined", "system")
+            self._push("onLog", "Не пробило напрямую — пробую запасную стратегию", "system")
         # 2) Фолбэк — оркестратор на .bat (combined + general).
         if epoch != self._start_epoch or not self._want:
             return
@@ -376,7 +376,7 @@ class Api:
         for strat in engine_strategies.STRATEGIES:
             if epoch != self._start_epoch or not self._want:
                 return None
-            self._push("onState", "connecting", f"Свой метод: проверка «{strat}»…")
+            self._push("onState", "connecting", f"Подключение · {strat}…")
             self._push("onLog", f"[engine] пробую технику {strat}…", "system")
             self._engine.stop()
             kill_winws()
@@ -406,8 +406,8 @@ class Api:
             ok, total, lat = probe_hosts(list(COMBINED_HOSTS), timeout=4.0)
             self._engine_stats = (ok, total, lat) if ok else self._engine_stats
             if ok < max(1, (total + 1) // 2):
-                self._push("onLog", "Свой метод просел — переключаюсь на combined", "system")
-                self._push("onState", "switching", "Переключение на combined…")
+                self._push("onLog", "Связь просела — переключаю стратегию", "system")
+                self._push("onState", "switching", "Переключение стратегии…")
                 self._engine.stop(); self._engine_on = False
                 self._restore_quic()
                 if epoch == self._start_epoch and self._want:

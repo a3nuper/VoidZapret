@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const body = document.body;
   let api = null;
-  let appVer = "3.0";
+  let appVer = "3.1";
 
   function call(method, ...args) {
     if (api && api[method]) { try { return api[method](...args); } catch (e) {} }
@@ -138,9 +138,6 @@
   function applyAdv(d) {
     if (!d) return;
     $("adv-quic").checked = !!d.quic;
-    $("adv-ipset").checked = !!d.ipset;
-    document.querySelectorAll("#adv-game button").forEach((b) =>
-      b.classList.toggle("active", b.dataset.mode === (d.game || "off")));
   }
   async function advRefresh() { applyAdv(await call("advanced_status")); }
   function openAdv() { $("adv-drawer").classList.add("open"); $("adv-backdrop").classList.add("open"); advRefresh(); }
@@ -149,13 +146,6 @@
   $("adv-close").addEventListener("click", closeAdv);
   $("adv-backdrop").addEventListener("click", closeAdv);
   $("adv-quic").addEventListener("change", async (e) => applyAdv(await call("set_quic", e.target.checked)));
-  $("adv-ipset").addEventListener("change", async (e) => applyAdv(await call("set_ipset", e.target.checked)));
-  document.querySelectorAll("#adv-game button").forEach((b) => {
-    b.addEventListener("click", async () => {
-      document.querySelectorAll("#adv-game button").forEach((x) => x.classList.toggle("active", x === b));
-      applyAdv(await call("set_game_filter", b.dataset.mode));
-    });
-  });
 
   // ---------------- попапы чипов (Соединение / Пинг) ----------------
   const backdrop = $("modal-backdrop");
