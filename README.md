@@ -34,7 +34,7 @@
 Обход выполняет `winws.exe` (из комплекта Flowseal) с драйвером `WinDivert`. Он перехватывает исходящие TLS ClientHello и QUIC и применяет техники десинхронизации DPI (`fake`, `multisplit`, поддельные QUIC/STUN/Discord-пакеты, split-seqovl и т.д.). VoidZapret сам формирует и запускает нужный `.bat`, отслеживает процесс и показывает статус.
 
 ### Оркестратор (умный обход)
-Вместо отдельных тумблеров обходом управляет один слой — **оркестратор** ([`core/orchestrator.py`](zapret-gui/core/orchestrator.py)):
+Вместо отдельных тумблеров обходом управляет один слой — **оркестратор** ([`core/orchestrator.py`](core/orchestrator.py)):
 
 - На вход подаётся список стратегий-кандидатов (`combined.bat` + `general*.bat`) и список целевых хостов.
 - При запуске оркестратор перебирает кандидаты (предпочтительная — первой), поднимает `winws`, ждёт инициализацию и проверяет реальную связь до целей. Первая прошедшая стратегия становится активной (**самопроверка + авто-перебор**).
@@ -71,7 +71,7 @@
 
 ## Стратегии (`.bat`)
 
-В папке `zapret-gui/zapret/` лежат стратегии:
+В папке `zapret/` лежат стратегии:
 
 - `general*.bat` — стратегии Flowseal для общего веба (перебираются автоподбором лучшего метода);
 - `discord*.bat` — обход Discord (база + варианты `ALT`, `ALT2`);
@@ -87,41 +87,49 @@
 ## Структура проекта
 
 ```text
-VoidZapret/
-├── README.md
-└── zapret-gui/
-    ├── main.py                 # точка входа: повышение прав + запуск WebView-приложения
-    ├── webapp.py               # окно pywebview + мост js_api ↔ Python (Api)
-    ├── webui/                  # фронт (HTML/CSS/JS)
-    │   ├── index.html          # оболочка: рейл + вкладки (главная/журнал/WARP/настройки/о прог.)
-    │   ├── style.css           # тема Midnight glass: стекло, glow, анимации
-    │   └── app.js              # роутер + мост к Python (window.vz / pywebview.api)
-    ├── config.py               # конфиг, пути к zapret, список стратегий, версия
-    ├── make_icon.py            # конвертация logo.png -> icon.ico (Pillow)
-    ├── requirements.txt
-    ├── VoidZapret.spec         # сборка PyInstaller (onedir, WebView2 + pythonnet)
-    ├── icon.ico                # иконка приложения и установщика
-    ├── zapret/                 # встроенный zapret (winws.exe, WinDivert, .bat, lists)
-    ├── installer/
-    │   └── VoidZapret.iss      # скрипт установщика Inno Setup
-    ├── core/
-    │   ├── admin.py            # проверка/повышение прав администратора
-    │   ├── process_manager.py  # запуск/остановка winws, трекинг PID, скрытие окон
-    │   ├── method_tester.py    # перебор стратегий + TLS-проверки + замер пинга
-    │   ├── orchestrator.py     # умный обход: кандидаты, самопроверка, watchdog
-    │   ├── warp.py             # управление Cloudflare WARP (warp-cli)
-    │   ├── autostart.py        # автозапуск через реестр (HKCU…\Run)
-    │   └── updater.py          # скачивание и установка релизов Flowseal
-    └── ui/
-        └── tray.py             # иконка в системном трее (pystray)
+VoidZapret/                     # корень репозитория
+├── main.py                     # точка входа: повышение прав + запуск WebView-приложения
+├── webapp.py                   # окно pywebview + мост js_api ↔ Python (Api)
+├── webui/                      # фронт (HTML/CSS/JS)
+│   ├── index.html              # оболочка: рейл + вкладки (главная/журнал/DNS/WARP/настройки/о прог.)
+│   ├── style.css               # тема Midnight glass: стекло, glow, анимации
+│   └── app.js                  # роутер + мост к Python (window.vz / pywebview.api)
+├── config.py                   # конфиг, пути к zapret, список стратегий, версии
+├── make_icon.py                # конвертация logo.png -> icon.ico (Pillow)
+├── requirements.txt
+├── VoidZapret.spec             # сборка PyInstaller (onedir, WebView2 + pythonnet)
+├── icon.ico                    # иконка приложения и установщика
+├── .gitignore / .gitattributes # (.bat всегда CRLF — критично для cmd)
+├── zapret/                     # встроенный zapret (winws.exe, WinDivert, .bat, lists)
+├── installer/
+│   └── VoidZapret.iss          # скрипт установщика Inno Setup (+ WebView2 bootstrapper)
+├── core/
+│   ├── admin.py                # проверка/повышение прав администратора
+│   ├── process_manager.py      # запуск/остановка winws, трекинг PID, сброс WinDivert
+│   ├── method_tester.py        # перебор стратегий + TLS-проверки + замер пинга
+│   ├── orchestrator.py         # умный обход: кандидаты, самопроверка, watchdog
+│   ├── dns.py                  # подмена системного DNS (+ DoH)
+│   ├── quic.py                 # QUIC-фикс YouTube (блок UDP/443)
+│   ├── zapret_flags.py         # переключатели GameFilter / IPSet
+│   ├── warp.py                 # управление Cloudflare WARP (warp-cli)
+│   ├── autostart.py            # автозапуск через реестр (HKCU…\Run)
+│   ├── updater.py              # обновление zapret из релизов Flowseal
+│   └── app_updater.py          # авто-обновление приложения из GitHub Releases
+└── ui/
+    └── tray.py                 # иконка в системном трее (pystray)
 ```
+
+---
+
+## Установка (готовая)
+
+Скачай последний установщик со страницы **[Releases](https://github.com/a3nuper/VoidZapret/releases/latest)** (`VoidZapret-Setup-*.exe`) и запусти. Он поставит приложение, при необходимости тихо доустановит WebView2 и создаст ярлыки. Приложение само проверяет новые версии при запуске (авто-обновление через GitHub Releases).
 
 ---
 
 ## Запуск из исходников
 
 ```powershell
-cd zapret-gui
 py -m pip install -r requirements.txt
 py main.py
 ```
@@ -137,11 +145,10 @@ py main.py
 Сборка делается через **PyInstaller в режиме onedir** (папка с `exe` + `_internal`):
 
 ```powershell
-cd zapret-gui
 py -m PyInstaller --noconfirm VoidZapret.spec
 ```
 
-Результат: `zapret-gui/dist/VoidZapret/VoidZapret.exe` (+ папка `_internal` со встроенным `zapret`, `webui` и DLL WebView2/pythonnet).
+Результат: `dist/VoidZapret/VoidZapret.exe` (+ папка `_internal` со встроенным `zapret`, `webui` и DLL WebView2/pythonnet).
 
 Особенности сборки:
 - **WebView2 + pythonnet** — spec собирает их через `collect_all('webview'/'pythonnet'/'clr_loader')`, фронт `webui/` кладётся в datas. WebView2 Runtime должен быть в системе (есть в Win10/11; иначе — тихий bootstrapper в установщике).
@@ -161,7 +168,7 @@ py -m PyInstaller --noconfirm VoidZapret.spec
 ISCC.exe installer\VoidZapret.iss
 ```
 
-Результат: `zapret-gui/dist/installer/VoidZapret-Setup-<версия>.exe`.
+Результат: `dist/installer/VoidZapret-Setup-<версия>.exe`.
 
 Установщик:
 - ставит программу в `Program Files\VoidZapret` с правами администратора;
