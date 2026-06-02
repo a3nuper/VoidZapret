@@ -30,7 +30,15 @@ _MASK = 0xFFFFFFFF
 
 
 class VoidEngine:
-    FILTER = "outbound and ip and tcp.PayloadLength > 0 and tcp.DstPort == 443"
+    _FILTER_TCP = "outbound and ip and tcp.DstPort == 443 and tcp.PayloadLength > 0"
+    # + UDP/443, когда включён дроп QUIC (форс-TCP). QUIC дропается только пока движок
+    # активен (в WinDivert) — без правил фаервола, поэтому после остановки/ребута
+    # ничего не остаётся заблокированным.
+    _FILTER_TCP_UDP = ("outbound and ip and ((tcp.DstPort == 443 and "
+                       "tcp.PayloadLength > 0) or (udp.DstPort == 443))")
+
+    def _filter(self) -> str:
+        return self._FILTER_TCP_UDP if self._drop_quic else self._FILTER_TCP
 
     def __init__(self, on_log: Optional[Callable[[str], None]] = None) -> None:
         self._on_log = on_log or (lambda _m: None)
@@ -40,7 +48,11 @@ class VoidEngine:
         self._count = 0
         self._strategy = "fakesplit"
         self._targeting = True
+        self._drop_quic = False   # форс-TCP (дроп QUIC) — по выбору пользователя
         self._targets: set[str] = set()
+
+    def set_drop_quic(self, on: bool) -> None:
+        self._drop_quic = bool(on)
 
     @staticmethod
     def available() -> bool:
@@ -66,7 +78,7 @@ class VoidEngine:
         # Открываем WinDivert СИНХРОННО — чтобы сразу знать про недоступность
         # (нет прав / конфликт драйвера) и уйти на фолбэк, а не висеть.
         try:
-            self._w = pydivert.WinDivert(self.FILTER)
+            self._w = pydivert.WinDivert(self._filter())
             self._w.open()
         except Exception as exc:
             self._on_log(f"[engine] WinDivert недоступен: {exc}")
@@ -106,6 +118,15 @@ class VoidEngine:
             self._on_log(f"[engine] стоп (ClientHello обработано: {self._count})")
 
     def _handle(self, packet) -> None:
+        # QUIC (UDP/443): дропаем (не реинжектим) → клиент уходит на TCP.
+        if packet.udp is not None:
+            if self._drop_quic:
+                return
+            try:
+                self._w.send(packet)
+            except Exception:
+                pass
+            return
         try:
             data = bytes(packet.payload) if packet.payload else b""
             if is_client_hello(data):

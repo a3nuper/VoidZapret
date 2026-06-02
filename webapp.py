@@ -42,7 +42,6 @@ SERVICES = [
     ("YouTube", "www.youtube.com"),
     ("Discord", "discord.com"),
     ("Epic / Игры", "www.epicgames.com"),
-    ("Instagram", "instagram.com"),
     ("X / Twitter", "x.com"),
 ]
 
@@ -242,10 +241,21 @@ class Api:
             self._push("onAppUpdate", f"Ошибка: {exc}", -2.0)
 
     def set_quic(self, on: bool) -> dict:
-        self._config.quic_disable = bool(on)   # запоминаем ручной выбор
+        on = bool(on)
+        self._config.quic_disable = on
         self._config.save()
-        # netsh ~1с — в фоне, чтобы не блокировать мост; firewall действует сразу.
-        threading.Thread(target=lambda: quic.set_quic_disabled(bool(on)), daemon=True).start()
+        self._engine.set_drop_quic(on)
+        # Фаерволом больше НЕ пользуемся (QUIC дропает движок) — убираем любое
+        # старое правило, чтобы оно не «залипло» после ребута.
+        threading.Thread(target=lambda: quic.set_quic_disabled(False), daemon=True).start()
+        # Если обход активен — перезапускаем, чтобы фильтр движка перечитал QUIC-режим.
+        if self._want:
+            self._start_epoch += 1
+            self._engine.stop(); self._engine_on = False
+            self._orch.stop()
+            self._push("onState", "connecting", "Применяю QUIC-фикс…")
+            threading.Thread(target=self._smart_start, args=(self._start_epoch,),
+                             daemon=True).start()
         return {"game": zapret_flags.game_filter_mode(),
                 "ipset": zapret_flags.ipset_loaded(), "quic": bool(on)}
 
@@ -313,7 +323,6 @@ class Api:
             self._start_epoch += 1
             self._engine.stop(); self._engine_on = False
             self._orch.stop()
-            self._restore_quic()   # снять временный форс QUIC от движка
             self._push("onState", "off", "")
             return False
         if not self._active_candidates() and not VoidEngine.available():
@@ -336,11 +345,11 @@ class Api:
         """Сначала пробуем НАШ движок (приоритет), иначе — combined/general (winws)."""
         # 1) Наш VoidEngine — калибровка по техникам.
         if VoidEngine.available():
-            # Авто-сброс драйвера (чтобы не просить юзера перезапускать) и форс TCP:
-            # движок пока только TCP, поэтому глушим QUIC → Instagram/игры/видео идут
-            # по TCP, который мы пробиваем.
+            # Авто-сброс драйвера (чтобы не просить юзера перезапускать). QUIC движок
+            # глушит сам, пока работает (UDP/443 дропается в WinDivert) — без правил
+            # фаервола, поэтому после остановки/ребута ничего не остаётся заблокированным.
             reset_windivert()
-            quic.set_quic_disabled(True)
+            self._engine.set_drop_quic(self._config.quic_disable)  # форс-TCP по выбору
             best = self._engine_calibrate(epoch)
             if epoch != self._start_epoch or not self._want:
                 return
@@ -358,7 +367,6 @@ class Api:
                                  daemon=True).start()
                 return
             self._engine.stop()
-            self._restore_quic()   # вернуть QUIC для combined (winws сам рулит QUIC)
             self._push("onLog", "Не пробило напрямую — пробую запасную стратегию", "system")
         # 2) Фолбэк — оркестратор на .bat (combined + general).
         if epoch != self._start_epoch or not self._want:
@@ -394,7 +402,9 @@ class Api:
             ok, total, lat = probe_hosts(hosts, timeout=4.0)
             self._push("onLog", f"[engine] {strat}: связь {ok}/{total}"
                                 + (f", ~{lat:.0f} мс" if ok else ""), "system")
-            if ok >= max(1, (total + 1) // 2):
+            # Берём технику движка ТОЛЬКО если пробила ВСЁ — иначе уходим на combined
+            # (надёжность важнее: для публичного релиза combined должен спасать).
+            if total and ok == total:
                 return (strat, ok, total, lat)
         return None
 
@@ -409,7 +419,6 @@ class Api:
                 self._push("onLog", "Связь просела — переключаю стратегию", "system")
                 self._push("onState", "switching", "Переключение стратегии…")
                 self._engine.stop(); self._engine_on = False
-                self._restore_quic()
                 if epoch == self._start_epoch and self._want:
                     self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
                                      preferred_name=self._strat_name())
@@ -501,6 +510,10 @@ class Api:
         self._push("onLog", f"[i] Права администратора: {is_admin()}", "system")
         self._push("onLog", f"[i] winws.exe: {wp} (есть: {wp.is_file()})", "system")
         self._push("onLog", f"[i] Кандидатов стратегий: {len(self._candidates())}", "system")
+        # ВАЖНО: на каждом старте сносим любое правило фаервола QUIC от старых версий —
+        # иначе QUIC оставался заблокирован системно после ребута и YouTube/Discord
+        # не грузились. Теперь QUIC дропает только сам движок, пока активен.
+        threading.Thread(target=lambda: quic.set_quic_disabled(False), daemon=True).start()
         # Восстанавливаем выбранный DNS на систему (чтобы не «слетал» после перезапуска).
         if self._config.dns_force or self._config.dns_provider != "dhcp":
             threading.Thread(target=self._dns_apply, daemon=True).start()

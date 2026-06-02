@@ -56,7 +56,6 @@ COMBINED_HOSTS = [
     "www.youtube.com",
     "discord.com",
     "www.epicgames.com",
-    "instagram.com",
     "x.com",
 ]
 
