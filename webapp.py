@@ -195,7 +195,7 @@ class Api:
         return {
             "game": zapret_flags.game_filter_mode(),   # off|all|tcp|udp
             "ipset": zapret_flags.ipset_loaded(),
-            "quic": quic.quic_disabled(),
+            "quic": self._config.quic_disable,         # ручной выбор (движок форсит отдельно)
         }
 
     def _restart_if_running(self) -> None:
@@ -242,6 +242,8 @@ class Api:
             self._push("onAppUpdate", f"Ошибка: {exc}", -2.0)
 
     def set_quic(self, on: bool) -> dict:
+        self._config.quic_disable = bool(on)   # запоминаем ручной выбор
+        self._config.save()
         # netsh ~1с — в фоне, чтобы не блокировать мост; firewall действует сразу.
         threading.Thread(target=lambda: quic.set_quic_disabled(bool(on)), daemon=True).start()
         return {"game": zapret_flags.game_filter_mode(),
@@ -311,6 +313,7 @@ class Api:
             self._start_epoch += 1
             self._engine.stop(); self._engine_on = False
             self._orch.stop()
+            self._restore_quic()   # снять временный форс QUIC от движка
             self._push("onState", "off", "")
             return False
         if not self._active_candidates() and not VoidEngine.available():
@@ -323,10 +326,21 @@ class Api:
                          daemon=True).start()
         return True
 
+    def _restore_quic(self) -> None:
+        """Возвращает QUIC к ручному выбору пользователя (движок временно форсит)."""
+        threading.Thread(
+            target=lambda: quic.set_quic_disabled(self._config.quic_disable),
+            daemon=True).start()
+
     def _smart_start(self, epoch: int) -> None:
         """Сначала пробуем НАШ движок (приоритет), иначе — combined/general (winws)."""
         # 1) Наш VoidEngine — калибровка по техникам.
         if VoidEngine.available():
+            # Авто-сброс драйвера (чтобы не просить юзера перезапускать) и форс TCP:
+            # движок пока только TCP, поэтому глушим QUIC → Instagram/игры/видео идут
+            # по TCP, который мы пробиваем.
+            reset_windivert()
+            quic.set_quic_disabled(True)
             best = self._engine_calibrate(epoch)
             if epoch != self._start_epoch or not self._want:
                 return
@@ -344,6 +358,7 @@ class Api:
                                  daemon=True).start()
                 return
             self._engine.stop()
+            self._restore_quic()   # вернуть QUIC для combined (winws сам рулит QUIC)
             self._push("onLog", "Свой метод не пробил — перехожу на combined", "system")
         # 2) Фолбэк — оркестратор на .bat (combined + general).
         if epoch != self._start_epoch or not self._want:
@@ -368,8 +383,13 @@ class Api:
             time.sleep(0.5)
             self._engine.set_strategy(strat)
             if not self._engine.start():
-                self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
-                return None
+                # авто-сброс драйвера и одна повторная попытка (конфликт версий WinDivert)
+                self._push("onLog", "[engine] сбрасываю WinDivert и пробую снова…", "system")
+                reset_windivert()
+                time.sleep(1.0)
+                if not self._engine.start():
+                    self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
+                    return None
             time.sleep(3.0)  # инициализация + прогрев
             ok, total, lat = probe_hosts(hosts, timeout=4.0)
             self._push("onLog", f"[engine] {strat}: связь {ok}/{total}"
@@ -389,6 +409,7 @@ class Api:
                 self._push("onLog", "Свой метод просел — переключаюсь на combined", "system")
                 self._push("onState", "switching", "Переключение на combined…")
                 self._engine.stop(); self._engine_on = False
+                self._restore_quic()
                 if epoch == self._start_epoch and self._want:
                     self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
                                      preferred_name=self._strat_name())

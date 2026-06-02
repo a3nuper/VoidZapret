@@ -131,27 +131,33 @@ class VoidEngine:
     def _clone(self, packet):
         return pydivert.Packet(bytearray(packet.raw), packet.interface, packet.direction)
 
+    def _send_fake(self, packet) -> None:
+        """Поддельный ClientHello (невинный SNI, битый checksum + низкий TTL)."""
+        fake = self._clone(packet)
+        fake.payload = strategies.build_fake_clienthello()
+        try:
+            fake.ipv4.ttl = strategies.FAKE_TTL
+        except Exception:
+            pass
+        self._w.send(fake, recalculate_checksum=False)  # битый checksum → сервер дропнет
+
     def _apply(self, packet, data: bytes, pos: int) -> None:
         seq = packet.tcp.seq_num
         st = self._strategy
 
-        if st in ("split", "disorder"):
+        if st in ("split", "disorder", "fakedisorder"):
+            if st == "fakedisorder":
+                self._send_fake(packet)
             p1 = self._clone(packet); p1.payload = data[:pos]
             p2 = self._clone(packet); p2.payload = data[pos:]
             p2.tcp.seq_num = (seq + pos) & _MASK
-            order = (p2, p1) if st == "disorder" else (p1, p2)
+            order = (p1, p2) if st == "split" else (p2, p1)  # disorder → обратный порядок
             for p in order:
                 self._w.send(p)
             return
 
         if st in ("fake", "fakesplit"):
-            fake = self._clone(packet)
-            fake.payload = strategies.build_fake_clienthello()
-            try:
-                fake.ipv4.ttl = strategies.FAKE_TTL
-            except Exception:
-                pass
-            self._w.send(fake, recalculate_checksum=False)  # битый checksum: сервер дропнет
+            self._send_fake(packet)
             if st == "fake":
                 real = self._clone(packet); real.payload = data
                 self._w.send(real)

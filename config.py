@@ -193,6 +193,7 @@ class Config:
     minimize_to_tray: bool = True
     dns_provider: str = "dhcp"
     dns_force: bool = False
+    quic_disable: bool = False        # ручной выбор «QUIC-фикс» (движок временно форсит)
     # Стратегии, давшие 0/5 при последнем полном подборе — пропускаем их в
     # обычном «Запустить» (чтобы не тратить время). Сбрасывается при «Подобрать».
     dead_strategies: list = field(default_factory=list)
