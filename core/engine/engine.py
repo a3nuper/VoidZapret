@@ -30,12 +30,14 @@ _MASK = 0xFFFFFFFF
 
 
 class VoidEngine:
-    _FILTER_TCP = "outbound and ip and tcp.DstPort == 443 and tcp.PayloadLength > 0"
-    # + UDP/443, когда включён дроп QUIC (форс-TCP). QUIC дропается только пока движок
-    # активен (в WinDivert) — без правил фаервола, поэтому после остановки/ребута
-    # ничего не остаётся заблокированным.
-    _FILTER_TCP_UDP = ("outbound and ip and ((tcp.DstPort == 443 and "
-                       "tcp.PayloadLength > 0) or (udp.DstPort == 443))")
+    # КЛЮЧЕВОЕ: ловим ТОЛЬКО TLS ClientHello (record=0x16, handshake=0x01 на offset 5),
+    # а не весь трафик 443. Иначе через Python-цикл шёл бы ВЕСЬ HTTPS → захлёбывание и
+    # потеря пакетов под нагрузкой (Discord/видео рвались). Теперь 99.9% пакетов идут
+    # мимо WinDivert напрямую — обход лёгкий и не ломает соединения.
+    _CH = "tcp.DstPort == 443 and tcp.Payload[0] == 0x16 and tcp.Payload[5] == 0x01"
+    _FILTER_TCP = f"outbound and ip and {_CH}"
+    # + UDP/443, когда включён дроп QUIC (форс-TCP) — дропается только пока движок активен.
+    _FILTER_TCP_UDP = f"outbound and ip and (({_CH}) or (udp.DstPort == 443))"
 
     def _filter(self) -> str:
         return self._FILTER_TCP_UDP if self._drop_quic else self._FILTER_TCP
