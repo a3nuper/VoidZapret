@@ -363,7 +363,10 @@ class Api:
             # глушит сам, пока работает (UDP/443 дропается в WinDivert) — без правил
             # фаервола, поэтому после остановки/ребута ничего не остаётся заблокированным.
             reset_windivert()
-            self._engine.set_drop_quic(self._config.quic_disable)  # форс-TCP по выбору
+            # ВСЕГДА форсим дроп QUIC, пока активен движок (не по настройке): видео
+            # YouTube и часть Discord идут по HTTP/3 (UDP/443) мимо TCP-десинка и
+            # режутся DPI. Без этого «страница есть, видео нет». Снимается сам при стопе.
+            self._engine.set_drop_quic(True)
             best = self._engine_calibrate(epoch)
             if epoch != self._start_epoch or not self._want:
                 return

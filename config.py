@@ -9,7 +9,7 @@ from pathlib import Path
 CONFIG_FILENAME = "zapret_gui_config.json"
 
 # Версия самого приложения VoidZapret (для авто-обновления через GitHub Releases).
-APP_VERSION = "3.2.3"
+APP_VERSION = "3.2.4"
 
 # Имена .bat в порядке приоритета для автодетекта (оставлен только курируемый набор).
 BAT_PRIORITY = [

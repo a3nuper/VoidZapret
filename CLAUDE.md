@@ -54,8 +54,12 @@ VoidZapret.spec    → PyInstaller (onedir; collect_all webview/pythonnet/clr_lo
 HTTPS идёт через Python-цикл, очередь переполняется, пакеты теряются и соединения
 рвутся под нагрузкой. Десинк применяется только к ClientHello целевых SNI
 (таргетинг по `hosts.py`), `ip.ident=0` (фикс Google/видео). QUIC (UDP/443) дропается
-ТОЛЬКО пока движок активен и только если включён `config.quic_disable` — без правил
-фаервола (чтобы ничего не залипало после ребута).
+ВСЕГДА, пока движок активен (форс-TCP) — иначе видео YouTube (googlevideo) и часть
+Discord уходят в HTTP/3 мимо TCP-десинка и режутся DPI («страница есть, видео нет»).
+Дроп только внутри WinDivert-цикла, без правил фаервола (ничего не залипает после
+ребута). Fake-техника шлёт ДВА поддельных ClientHello: badseq (per-packet DPI) и
+correct-seq+низкий TTL+снят ACK/datanoack (DPI со сборкой по seq). Сплит — по midsld
+(середина домена 2-го уровня).
 
 ## Сборка и запуск
 

@@ -50,7 +50,12 @@ class VoidEngine:
         self._count = 0
         self._strategy = "fakesplit"
         self._targeting = True
-        self._drop_quic = False   # форс-TCP (дроп QUIC) — по выбору пользователя
+        # Форс-TCP: пока движок активен, QUIC (UDP/443) дропается ВСЕГДА. Иначе видео
+        # YouTube (googlevideo) и часть трафика Discord/чатов уходят в HTTP/3 мимо
+        # TCP-десинка и режутся DPI — страница открывается, а видео/звонок «висят».
+        # Дроп только внутри WinDivert-цикла (без правил фаервола) — после стопа/ребута
+        # ничего не залипает.
+        self._drop_quic = True
         self._targets: set[str] = set()
 
     def set_drop_quic(self, on: bool) -> None:
@@ -164,21 +169,47 @@ class VoidEngine:
         self._w.send(p)
 
     def _send_fake(self, packet) -> None:
-        """Поддельный ClientHello (невинный SNI) с fooling=badseq+низкий TTL.
+        """Поддельные ClientHello (невинный SNI) ПЕРЕД реальным — отравляют DPI.
 
-        seq уводим далеко за окно → сервер игнорирует пакет как out-of-window, а DPI
-        всё равно парсит ClientHello (видит «www.google.com» → пропускает соединение).
-        Это надёжнее битого checksum (не зависит от пересчёта в pydivert).
+        Шлём ДВА fake с разным «обманом», чтобы покрыть оба типа DPI и при этом ни
+        один не дошёл до сервера (реальное соединение не портится):
+          1) badseq — seq уведён далеко за окно. DPI, инспектирующий пакеты по
+             отдельности, видит «www.google.com» → пропускает соединение; сервер же
+             отбросит пакет как out-of-window.
+          2) correct-seq + низкий TTL + снят ACK (datanoack) — для DPI, который
+             собирает поток по seq: fake стоит ровно на месте реального ClientHello.
+             Сервер отбросит сегмент без ACK (невалиден в established), а низкий TTL
+             и так убьёт пакет в пути до сервера.
+        Оба с валидным checksum (pydivert пересчитает при send).
         """
-        fake = self._clone(packet)
-        fake.payload = strategies.build_fake_clienthello()
+        seq = packet.tcp.seq_num
+        # 1) badseq
+        f1 = self._clone(packet)
+        f1.payload = strategies.build_fake_clienthello()
         try:
-            fake.tcp.seq_num = (packet.tcp.seq_num - 0x40000) & _MASK   # badseq
-            fake.ipv4.ttl = strategies.FAKE_TTL
-            fake.ipv4.ident = 0
+            f1.tcp.seq_num = (seq - 0x40000) & _MASK
+            f1.ipv4.ttl = strategies.FAKE_TTL
+            f1.ipv4.ident = 0
         except Exception:
             pass
-        self._w.send(fake)   # валидный checksum, но out-of-window seq → сервер дропнет
+        try:
+            self._w.send(f1)
+        except Exception:
+            pass
+        # 2) correct-seq + низкий TTL + datanoack
+        f2 = self._clone(packet)
+        f2.payload = strategies.build_fake_clienthello()
+        try:
+            f2.tcp.seq_num = seq
+            f2.tcp.ack = False
+            f2.ipv4.ttl = strategies.FAKE_TTL
+            f2.ipv4.ident = 0
+        except Exception:
+            pass
+        try:
+            self._w.send(f2)
+        except Exception:
+            pass
 
     def _apply(self, packet, data: bytes, pos: int) -> None:
         seq = packet.tcp.seq_num

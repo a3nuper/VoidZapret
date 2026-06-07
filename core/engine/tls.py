@@ -74,13 +74,37 @@ def parse_client_hello(payload: bytes) -> Optional[ClientHelloInfo]:
     return None
 
 
-def split_position(payload: bytes) -> int:
-    """Где резать ClientHello: середина SNI-имени, иначе небольшой фикс-сдвиг.
+def _sld_offset(host: str) -> int:
+    """Сдвиг начала домена 2-го уровня (SLD) внутри host.
 
-    Разрыв внутри имени хоста не даёт DPI собрать SNI-сигнатуру.
+    Для «redirector.googlevideo.com» SLD = «googlevideo»; для «gateway.discord.gg»
+    SLD = «discord». Разрыв внутри SLD надёжнее ломает SNI-сигнатуру DPI, чем
+    середина всего имени (которая часто попадает в поддомен). 0, если меток < 2.
+    """
+    labels = host.split(".")
+    if len(labels) < 2:
+        return 0
+    tld, sld = labels[-1], labels[-2]
+    # host оканчивается на «…sld.tld» → начало SLD = (длина host) − len(tld) − 1(точка) − len(sld).
+    return max(0, len(host) - len(tld) - 1 - len(sld))
+
+
+def split_position(payload: bytes) -> int:
+    """Где резать ClientHello: середина домена 2-го уровня (midsld), иначе фикс-сдвиг.
+
+    Разрыв внутри SLD не даёт DPI собрать SNI-сигнатуру. Для одноимённых
+    публичных суффиксов (bbc.co.uk) midsld может попасть в «co» — разрыв всё равно
+    ломает сигнатуру, точность тут не критична.
     """
     info = parse_client_hello(payload)
-    if info and info.sni_len >= 2:
+    if info and info.sni and info.sni_len >= 2:
+        sld_off = _sld_offset(info.sni)
+        sld_len = len(info.sni.split(".")[-2]) if info.sni.count(".") >= 1 else info.sni_len
+        if sld_len >= 2:
+            pos = info.sni_offset + sld_off + sld_len // 2
+            if 0 < pos < len(payload):
+                return pos
+        # запасной вариант внутри SNI — середина всего имени
         return info.sni_offset + info.sni_len // 2
     # запасной вариант — режем почти в начале записи (после заголовка)
     return min(len(payload) - 1, 6) if len(payload) > 6 else max(1, len(payload) // 2)
