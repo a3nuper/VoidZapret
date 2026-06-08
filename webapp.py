@@ -102,7 +102,9 @@ class Api:
             on_toggle=lambda: self.toggle(),
             is_running=lambda: self._want,
         )
+        self._net_ip = ""          # основной IP — для детекта смены сети (#4)
         threading.Thread(target=self._stats_loop, daemon=True).start()
+        threading.Thread(target=self._net_monitor, daemon=True).start()
 
     def bind(self, window) -> None:
         self._window = window
@@ -526,6 +528,44 @@ class Api:
                 self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
                                  preferred_name=self._strat_name())
             return
+
+    # ----------------------------------------------------------- устойчивость к смене сети
+    @staticmethod
+    def _primary_ip() -> str:
+        """IP основного исходящего интерфейса (маршрут по умолчанию), '' при сбое.
+
+        UDP-«connect» не шлёт пакетов — лишь выбирает маршрут и даёт локальный адрес.
+        """
+        import socket as _socket
+        try:
+            sk = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+            try:
+                sk.connect(("8.8.8.8", 80))
+                return sk.getsockname()[0]
+            finally:
+                sk.close()
+        except OSError:
+            return ""
+
+    def _net_monitor(self) -> None:
+        """Следит за сменой основного IP (Wi-Fi/LAN/VPN). При смене во время обхода —
+        перезапускает обход: рекалибровка под новую сеть (через быстрый путь — если
+        запомненная техника ещё годится, поднимется почти мгновенно)."""
+        self._net_ip = self._primary_ip()
+        while True:
+            time.sleep(8.0)
+            ip = self._primary_ip()
+            if not ip or ip == self._net_ip:
+                continue
+            self._net_ip = ip
+            if self._want:
+                self._push("onLog", f"Смена сети ({ip}) — переподключаю обход", "system")
+                self._start_epoch += 1
+                self._engine.stop(); self._engine_on = False
+                self._orch.stop()
+                self._push("onState", "connecting", "Сеть изменилась — переподключение…")
+                threading.Thread(target=self._smart_start, args=(self._start_epoch,),
+                                 daemon=True).start()
 
     def find_best(self) -> bool:
         if self._tester.is_running():

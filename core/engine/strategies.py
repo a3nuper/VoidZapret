@@ -5,6 +5,7 @@
 
 import ipaddress
 import os
+import random
 
 # Порядок калибровки: сильные/проверенные техники первыми. Первая прошедшая —
 # рабочий метод для данного провайдера.
@@ -13,26 +14,42 @@ STRATEGIES = ["multifakedisorder", "fakedisorder", "multidisorder", "disorder",
 
 # Низкий TTL для fake-пакета (умирает в пути после DPI, не доходит до сервера).
 FAKE_TTL = 8
+# «Авто-TTL»: перебор TTL для фейков. Шлём фейки с разным TTL, чтобы хотя бы один
+# гарантированно дошёл до DPI независимо от его дистанции (близко/далеко). Фейки
+# безопасны при ЛЮБОМ TTL (badseq/datanoack/низкий-TTL не дают серверу их принять),
+# поэтому перебор ничем не грозит реальному соединению — только покрывает больше сетей.
+FAKE_TTLS = (4, 7, 10)
 # Сколько байт «мусора» накладывать в seqovl.
 SEQOVL = 8
 
-_FAKE_SNI = "www.google.com"
+# Невинные SNI для фейков — выбираем СЛУЧАЙНО (анти-fingerprint): чтобы DPI не мог
+# зафиксировать сам обход по постоянному «www.google.com».
+_FAKE_SNIS = (
+    "www.google.com", "www.microsoft.com", "www.apple.com", "www.cloudflare.com",
+    "www.bing.com", "www.amazon.com", "www.office.com", "www.windowsupdate.com",
+    "www.wikipedia.org", "www.icloud.com",
+)
 
 
-def build_fake_clienthello(sni: str = _FAKE_SNI) -> bytes:
+def build_fake_clienthello(sni: str | None = None) -> bytes:
     """Минимальный правдоподобный TLS ClientHello с «невинным» SNI.
 
-    DPI, увидев его первым (на том же seq), считает соединение разрешённым.
+    DPI, увидев его первым (на том же seq), считает соединение разрешённым. SNI по
+    умолчанию случайный из списка, а длина session_id рандомная — это меняет
+    фингерпринт фейка от пакета к пакету (анти-fingerprint самого обхода).
     """
+    if sni is None:
+        sni = random.choice(_FAKE_SNIS)
     name = sni.encode("ascii", "ignore")
     entry = b"\x00" + len(name).to_bytes(2, "big") + name          # type host_name
     slist = len(entry).to_bytes(2, "big") + entry
     sni_ext = b"\x00\x00" + len(slist).to_bytes(2, "big") + slist  # ext server_name
     exts = len(sni_ext).to_bytes(2, "big") + sni_ext
+    sid = os.urandom(random.choice((0, 16, 32)))                   # случайный session_id
     body = (
         b"\x03\x03"                       # client_version TLS 1.2
         + os.urandom(32)                  # random
-        + b"\x00"                         # session_id len 0
+        + bytes([len(sid)]) + sid         # session_id (случайной длины)
         + b"\x00\x02\x13\x01"             # cipher_suites: TLS_AES_128_GCM_SHA256
         + b"\x01\x00"                     # compression: null
         + exts
@@ -53,9 +70,8 @@ VOICE_HI_IP = str(_VOICE_NET.broadcast_address)     # "66.22.255.255"
 VOICE_LO_INT = int(_VOICE_NET.network_address)      # для быстрой проверки в _handle
 VOICE_HI_INT = int(_VOICE_NET.broadcast_address)
 
-# Сколько фейковых STUN слать перед реальным голосовым пакетом и на скольких первых
-# пакетах каждого потока (как winws: --dpi-desync-repeats / --dpi-desync-cutoff).
-VOICE_REPEATS = 6
+# На скольких первых пакетах каждого голосового потока (по dst IP) делать десинк
+# (как winws --dpi-desync-cutoff). На каждом из них шлём фейк-STUN по всем FAKE_TTLS.
 VOICE_CUTOFF = 8
 
 

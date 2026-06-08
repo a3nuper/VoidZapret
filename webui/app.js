@@ -4,7 +4,7 @@
   const $ = (id) => document.getElementById(id);
   const body = document.body;
   let api = null;
-  let appVer = "3.2.6";
+  let appVer = "3.2.7";
 
   function call(method, ...args) {
     if (api && api[method]) { try { return api[method](...args); } catch (e) {} }

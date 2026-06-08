@@ -202,11 +202,11 @@ class VoidEngine:
         seen = self._voice_seen.get(key, 0)
         if seen < strategies.VOICE_CUTOFF:
             self._voice_seen[key] = seen + 1
-            for _ in range(strategies.VOICE_REPEATS):
+            for ttl in strategies.FAKE_TTLS:        # авто-TTL: фейк-STUN на разных TTL
                 fake = self._clone(packet)
                 fake.payload = strategies.build_fake_stun()
                 try:
-                    fake.ipv4.ttl = strategies.FAKE_TTL
+                    fake.ipv4.ttl = ttl
                     fake.ipv4.ident = 0
                 except Exception:
                     pass
@@ -235,45 +235,47 @@ class VoidEngine:
     def _send_fake(self, packet) -> None:
         """Поддельные ClientHello (невинный SNI) ПЕРЕД реальным — отравляют DPI.
 
-        Шлём ДВА fake с разным «обманом», чтобы покрыть оба типа DPI и при этом ни
-        один не дошёл до сервера (реальное соединение не портится):
+        Шлём fake двух типов (покрывают оба вида DPI), и каждый — на нескольких TTL
+        («авто-TTL»), чтобы хотя бы один достал DPI на любой дистанции. Ни один fake
+        не портит реальное соединение при ЛЮБОМ TTL:
           1) badseq — seq уведён далеко за окно. DPI, инспектирующий пакеты по
-             отдельности, видит «www.google.com» → пропускает соединение; сервер же
-             отбросит пакет как out-of-window.
-          2) correct-seq + низкий TTL + снят ACK (datanoack) — для DPI, который
-             собирает поток по seq: fake стоит ровно на месте реального ClientHello.
-             Сервер отбросит сегмент без ACK (невалиден в established), а низкий TTL
-             и так убьёт пакет в пути до сервера.
-        Оба с валидным checksum (pydivert пересчитает при send).
+             отдельности, видит невинный SNI → пропускает; сервер отбросит как
+             out-of-window.
+          2) correct-seq + снят ACK (datanoack) — для DPI со сборкой потока по seq:
+             fake стоит на месте реального ClientHello, а сервер отбросит сегмент без
+             ACK (невалиден в established).
+        SNI у каждого fake случайный (анти-fingerprint). Checksum валиден (pydivert
+        пересчитает при send).
         """
         seq = packet.tcp.seq_num
-        # 1) badseq
-        f1 = self._clone(packet)
-        f1.payload = strategies.build_fake_clienthello()
-        try:
-            f1.tcp.seq_num = (seq - 0x40000) & _MASK
-            f1.ipv4.ttl = strategies.FAKE_TTL
-            f1.ipv4.ident = 0
-        except Exception:
-            pass
-        try:
-            self._w.send(f1)
-        except Exception:
-            pass
-        # 2) correct-seq + низкий TTL + datanoack
-        f2 = self._clone(packet)
-        f2.payload = strategies.build_fake_clienthello()
-        try:
-            f2.tcp.seq_num = seq
-            f2.tcp.ack = False
-            f2.ipv4.ttl = strategies.FAKE_TTL
-            f2.ipv4.ident = 0
-        except Exception:
-            pass
-        try:
-            self._w.send(f2)
-        except Exception:
-            pass
+        for ttl in strategies.FAKE_TTLS:
+            # 1) badseq
+            f1 = self._clone(packet)
+            f1.payload = strategies.build_fake_clienthello()
+            try:
+                f1.tcp.seq_num = (seq - 0x40000) & _MASK
+                f1.ipv4.ttl = ttl
+                f1.ipv4.ident = 0
+            except Exception:
+                pass
+            try:
+                self._w.send(f1)
+            except Exception:
+                pass
+            # 2) correct-seq + datanoack
+            f2 = self._clone(packet)
+            f2.payload = strategies.build_fake_clienthello()
+            try:
+                f2.tcp.seq_num = seq
+                f2.tcp.ack = False
+                f2.ipv4.ttl = ttl
+                f2.ipv4.ident = 0
+            except Exception:
+                pass
+            try:
+                self._w.send(f2)
+            except Exception:
+                pass
 
     def _apply(self, packet, data: bytes, pos: int) -> None:
         seq = packet.tcp.seq_num

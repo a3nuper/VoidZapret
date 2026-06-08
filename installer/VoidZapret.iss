@@ -3,7 +3,7 @@
 ; рабочем столе и в меню «Пуск». Компиляция: ISCC.exe VoidZapret.iss
 
 #define MyAppName "VoidZapret"
-#define MyAppVersion "3.2.6"
+#define MyAppVersion "3.2.7"
 #define MyAppPublisher "VoidZapret"
 #define MyAppExeName "VoidZapret.exe"
 #define DistDir "..\dist\VoidZapret"
