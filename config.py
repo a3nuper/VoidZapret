@@ -9,7 +9,7 @@ from pathlib import Path
 CONFIG_FILENAME = "zapret_gui_config.json"
 
 # Версия самого приложения VoidZapret (для авто-обновления через GitHub Releases).
-APP_VERSION = "3.2.5"
+APP_VERSION = "3.2.6"
 
 # Имена .bat в порядке приоритета для автодетекта (оставлен только курируемый набор).
 BAT_PRIORITY = [
@@ -202,6 +202,10 @@ class Config:
     discord_strategy: str = ""
     dbd_strategy: str = ""
     combined_strategy: str = ""
+    # Запомненная лучшая техника движка — на следующем старте берётся сразу (без
+    # полного перебора всех техник). Если просела ниже порога — стратегии
+    # пересобираются заново, и сюда пишется новая лучшая.
+    engine_strategy: str = ""
 
     @classmethod
     def load(cls) -> "Config":

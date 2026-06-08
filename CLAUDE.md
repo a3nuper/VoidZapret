@@ -11,7 +11,7 @@
 запасной — `combined`-стратегии через `winws.exe`.
 
 - Репозиторий: `a3nuper/VoidZapret` (GitHub). Релизы: GitHub Releases (auto-update).
-- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.2.5).
+- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.2.6).
 - Поддержка автора: https://boosty.to/a3nuper
 
 ## Архитектура
@@ -46,7 +46,10 @@ VoidZapret.spec    → PyInstaller (onedir; collect_all webview/pythonnet/clr_lo
    (`multifakedisorder/fakedisorder/multidisorder/disorder/fakesplit/fake/split/seqovl`),
    проверяет связь до `ENGINE_HOSTS` (реальные эндпоинты: youtube, googlevideo,
    youtubei, discord, gateway.discord.gg, cdn) через `probe_hosts_detail`, выбирает
-   ЛУЧШУЮ технику. Принимает движок при `ok >= total//2`.
+   ЛУЧШУЮ технику. Принимает движок при `ok >= total//2`. Лучшая техника запоминается
+   (`config.engine_strategy`): следующий старт берёт её СРАЗУ, без полного перебора;
+   если просела ниже порога — стратегии пересобираются заново (и на старте, и в
+   watchdog при просадке связи — он теперь пересобирает движок, а не сразу уходит в winws).
 2. Если движок не открылся/не пробил → **combined** (winws) как фолбэк.
 
 **Движок (engine.py) — критично:** WinDivert-фильтр ловит **ТОЛЬКО ClientHello**

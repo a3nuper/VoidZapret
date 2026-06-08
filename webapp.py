@@ -395,33 +395,82 @@ class Api:
             return
         self._orch.start(bats, list(COMBINED_HOSTS), preferred_name=self._strat_name())
 
-    def _engine_calibrate(self, epoch: int):
-        """Пробует все техники, возвращает ЛУЧШУЮ (по связи, затем по пингу).
+    def _engine_probe_strategy(self, strat: str, hosts: list, epoch: int):
+        """Поднимает движок на технике strat, ждёт инициализацию и проверяет связь.
 
-        Принимаем движок, если пробил почти всё (ok >= total-1, минимум 2) — одна
-        цель может лежать по своей причине (геоблок и т.п.). Иначе → combined.
+        Возвращает (ok, lat, failed) либо None, если WinDivert не открылся или запуск
+        был отменён (сменился epoch / выключили обход). Общий код для перебора и
+        быстрого пути по запомненной стратегии.
+        """
+        if epoch != self._start_epoch or not self._want:
+            return None
+        self._engine.stop()
+        kill_winws()
+        time.sleep(0.5)
+        self._engine.set_strategy(strat)
+        if not self._engine.start():
+            self._push("onLog", "[engine] сбрасываю WinDivert и пробую снова…", "system")
+            reset_windivert()
+            time.sleep(1.0)
+            if not self._engine.start():
+                return None
+        time.sleep(3.0)
+        ok, _t, lat, failed = probe_hosts_detail(hosts, timeout=4.0)
+        return (ok, lat, failed)
+
+    def _remember_strategy(self, strat: str) -> None:
+        """Запоминает лучшую технику движка в конфиг — для быстрого старта в след. раз."""
+        if strat and strat != self._config.engine_strategy:
+            self._config.engine_strategy = strat
+            self._config.save()
+
+    def _engine_calibrate(self, epoch: int):
+        """Возвращает ЛУЧШУЮ технику (по связи, затем по пингу) или None.
+
+        Быстрый путь: сперва пробуем ЗАПОМНЕННУЮ технику — если проходит порог,
+        берём её сразу, без полного перебора (мгновенный старт). Если просела или её
+        нет — полный перебор, и лучшую запоминаем в конфиг (engine_strategy).
+        Принимаем движок, если пробил >= половины целей.
         """
         hosts = list(ENGINE_HOSTS)
         total = len(hosts)
+        need = max(2, total // 2)   # порог приёмки движка
+
+        # --- Быстрый путь: запомненная стратегия (без полного перебора) ---
+        cached = self._config.engine_strategy
+        if cached in engine_strategies.STRATEGIES:
+            self._push("onState", "connecting", f"Подключение · {cached} (запомнено)…")
+            self._push("onLog", f"[engine] пробую запомненную стратегию {cached}…", "system")
+            r = self._engine_probe_strategy(cached, hosts, epoch)
+            if epoch != self._start_epoch or not self._want:
+                return None
+            if r is not None:
+                ok, lat, failed = r
+                msg = f"[engine] {cached}: связь {ok}/{total}" + (f", ~{lat:.0f} мс" if ok else "")
+                if failed:
+                    msg += "  ✗ " + ", ".join(failed)
+                self._push("onLog", msg, "system")
+                if ok >= need:
+                    self._push("onLog", f"✓ {cached} работает ({ok}/{total}) — без перебора", "ok")
+                    return (cached, ok, total, lat)   # движок уже крутится на cached
+                self._push("onLog",
+                           f"[engine] {cached} просела ({ok}/{total}) — пересобираю стратегии",
+                           "system")
+
+        # --- Полный перебор ---
         best = None  # (strat, ok, total, lat)
         for strat in engine_strategies.STRATEGIES:
             if epoch != self._start_epoch or not self._want:
                 return None
             self._push("onState", "connecting", f"Подключение · {strat}…")
             self._push("onLog", f"[engine] пробую технику {strat}…", "system")
-            self._engine.stop()
-            kill_winws()
-            time.sleep(0.5)
-            self._engine.set_strategy(strat)
-            if not self._engine.start():
-                self._push("onLog", "[engine] сбрасываю WinDivert и пробую снова…", "system")
-                reset_windivert()
-                time.sleep(1.0)
-                if not self._engine.start():
-                    self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
+            r = self._engine_probe_strategy(strat, hosts, epoch)
+            if r is None:
+                if epoch != self._start_epoch or not self._want:
                     return None
-            time.sleep(3.0)
-            ok, _t, lat, failed = probe_hosts_detail(hosts, timeout=4.0)
+                self._push("onLog", "[engine] WinDivert недоступен — пропускаю движок", "error")
+                return None
+            ok, lat, failed = r
             msg = f"[engine] {strat}: связь {ok}/{total}" + (f", ~{lat:.0f} мс" if ok else "")
             if failed:
                 msg += "  ✗ " + ", ".join(failed)
@@ -430,7 +479,8 @@ class Api:
                 best = (strat, ok, total, lat)
             if ok == total:        # идеально — дальше не ищем
                 break
-        if best and best[1] >= max(2, total // 2):
+
+        if best and best[1] >= need:
             # поднимаем движок именно на лучшей технике (после перебора крутится последняя)
             if epoch != self._start_epoch or not self._want:
                 return None
@@ -439,6 +489,7 @@ class Api:
             if not self._engine.start():
                 return None
             time.sleep(1.5)
+            self._remember_strategy(best[0])   # запоминаем лучшую для быстрого старта
             return best
         return None
 
@@ -449,14 +500,32 @@ class Api:
                 return
             ok, total, lat = probe_hosts(list(ENGINE_HOSTS), timeout=4.0)
             self._engine_stats = (ok, total, lat) if ok else self._engine_stats
-            if ok < max(1, (total + 1) // 2):
-                self._push("onLog", "Связь просела — переключаю стратегию", "system")
-                self._push("onState", "switching", "Переключение стратегии…")
-                self._engine.stop(); self._engine_on = False
-                if epoch == self._start_epoch and self._want:
-                    self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
-                                     preferred_name=self._strat_name())
+            if ok >= max(1, (total + 1) // 2):
+                continue   # связь в норме — продолжаем наблюдать
+            # Связь просела — ПЕРЕСОБИРАЕМ стратегии (а не сразу уходим в winws).
+            # _engine_calibrate сперва перепроверит запомненную (быстро восстановится
+            # после блипа), при стойкой просадке — полный перебор с новой лучшей.
+            self._push("onLog", "Связь просела — пересобираю стратегии движка", "system")
+            self._push("onState", "connecting", "Пересбор стратегий…")
+            best = self._engine_calibrate(epoch)
+            if epoch != self._start_epoch or not self._want:
                 return
+            if best is not None:
+                strat, ok, total, lat = best
+                self._engine_strategy = strat
+                self._engine_stats = (ok, total, lat)
+                ping = f"  ·  ~{lat:.0f} мс" if lat else ""
+                self._push("onLog", f"✓ Стратегия {strat} ({ok}/{total})", "ok")
+                self._push("onState", "running",
+                           f"Стратегия {strat} · связь {ok}/{total}{ping}")
+                continue   # watchdog продолжает с новой стратегией
+            # Движок не пробил даже после пересбора — фолбэк на winws.
+            self._push("onLog", "Движок не пробил — запасная стратегия (winws)", "system")
+            self._engine.stop(); self._engine_on = False
+            if epoch == self._start_epoch and self._want:
+                self._orch.start(self._active_candidates(), list(COMBINED_HOSTS),
+                                 preferred_name=self._strat_name())
+            return
 
     def find_best(self) -> bool:
         if self._tester.is_running():
