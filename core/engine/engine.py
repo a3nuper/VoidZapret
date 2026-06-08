@@ -13,6 +13,8 @@
 Требует прав администратора. Не запускать одновременно с winws.
 """
 
+import socket
+import struct
 import threading
 from typing import Callable, Optional
 
@@ -35,12 +37,23 @@ class VoidEngine:
     # потеря пакетов под нагрузкой (Discord/видео рвались). Теперь 99.9% пакетов идут
     # мимо WinDivert напрямую — обход лёгкий и не ломает соединения.
     _CH = "tcp.DstPort == 443 and tcp.Payload[0] == 0x16 and tcp.Payload[5] == 0x01"
-    _FILTER_TCP = f"outbound and ip and {_CH}"
-    # + UDP/443, когда включён дроп QUIC (форс-TCP) — дропается только пока движок активен.
-    _FILTER_TCP_UDP = f"outbound and ip and (({_CH}) or (udp.DstPort == 443))"
+    # Голосовые/медиа-серверы Discord (AS49544) — узкий IP-диапазон, чтобы UDP-десинк
+    # голоса не тащил через Python-цикл игры/торренты (низкий объём = без перегруза).
+    _VOICE_RANGE = (f"ip.DstAddr >= {strategies.VOICE_LO_IP} and "
+                    f"ip.DstAddr <= {strategies.VOICE_HI_IP}")
+    _VOICE = f"(udp and ({_VOICE_RANGE}))"
+    # QUIC-дроп (форс-TCP). Discord-голос на UDP/443 сюда тоже попадёт, но в _handle
+    # проверка voice-IP идёт ПЕРВОЙ → голос уходит в voice-десинк и не дропается.
+    # (WinDivert-фильтр в этом билде не поддерживает `not`, поэтому исключение —
+    # на уровне рантайма, а не фильтра.)
+    _QUIC = "(udp.DstPort == 443)"
 
     def _filter(self) -> str:
-        return self._FILTER_TCP_UDP if self._drop_quic else self._FILTER_TCP
+        # ClientHello + голос Discord — всегда; QUIC — когда форс-TCP (по умолчанию да).
+        parts = [f"({self._CH})", self._VOICE]
+        if self._drop_quic:
+            parts.append(self._QUIC)
+        return "outbound and ip and (" + " or ".join(parts) + ")"
 
     def __init__(self, on_log: Optional[Callable[[str], None]] = None) -> None:
         self._on_log = on_log or (lambda _m: None)
@@ -57,6 +70,8 @@ class VoidEngine:
         # ничего не залипает.
         self._drop_quic = True
         self._targets: set[str] = set()
+        # Сколько голосовых пакетов Discord уже продесинкано на каждый dst IP (cutoff).
+        self._voice_seen: dict[str, int] = {}
 
     def set_drop_quic(self, on: bool) -> None:
         self._drop_quic = bool(on)
@@ -94,6 +109,7 @@ class VoidEngine:
         self._targets = hosts.load_targets() if self._targeting else set()
         self._running = True
         self._count = 0
+        self._voice_seen = {}
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
         return True
@@ -116,7 +132,12 @@ class VoidEngine:
                     packet = self._w.recv()
                 except Exception:
                     break
-                self._handle(packet)
+                # Защитная обёртка: ошибка обработки ОДНОГО пакета не должна ронять
+                # весь цикл движка (иначе отвалится и видео, и Discord).
+                try:
+                    self._handle(packet)
+                except Exception:
+                    pass
         finally:
             try:
                 self._w.close()
@@ -125,8 +146,12 @@ class VoidEngine:
             self._on_log(f"[engine] стоп (ClientHello обработано: {self._count})")
 
     def _handle(self, packet) -> None:
-        # QUIC (UDP/443): дропаем (не реинжектим) → клиент уходит на TCP.
         if packet.udp is not None:
+            # Голос Discord (UDP к медиасерверам): десинк, реальный пакет всегда проходит.
+            if self._is_voice_ip(packet.dst_addr or ""):
+                self._handle_voice(packet)
+                return
+            # Иначе это QUIC (UDP/443, не Discord): дроп при форс-TCP → клиент уходит на TCP.
             if self._drop_quic:
                 return
             try:
@@ -152,6 +177,45 @@ class VoidEngine:
             pass
         try:
             self._w.send(packet)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------ голос Discord (UDP)
+    @staticmethod
+    def _is_voice_ip(addr: str) -> bool:
+        """IP-адрес попадает в диапазон голосовых/медиасерверов Discord (66.22.192.0/18)."""
+        if not addr:
+            return False
+        try:
+            v = struct.unpack("!I", socket.inet_aton(addr))[0]
+        except OSError:
+            return False
+        return strategies.VOICE_LO_INT <= v <= strategies.VOICE_HI_INT
+
+    def _handle_voice(self, packet) -> None:
+        """Десинк голоса Discord: перед реальным UDP-пакетом шлём несколько фейковых
+        STUN с низким TTL (умирают до сервера) — DPI видит «обычный STUN», а не
+        Discord-voice, и не душит поток. Реальный пакет форвардим ВСЕГДА без изменений:
+        даже если десинк не помог, голос не ломается (нулевой риск регресса). Десинк
+        только на первых VOICE_CUTOFF пакетах потока (по dst IP) — DPI решает в начале."""
+        key = packet.dst_addr
+        seen = self._voice_seen.get(key, 0)
+        if seen < strategies.VOICE_CUTOFF:
+            self._voice_seen[key] = seen + 1
+            for _ in range(strategies.VOICE_REPEATS):
+                fake = self._clone(packet)
+                fake.payload = strategies.build_fake_stun()
+                try:
+                    fake.ipv4.ttl = strategies.FAKE_TTL
+                    fake.ipv4.ident = 0
+                except Exception:
+                    pass
+                try:
+                    self._w.send(fake)
+                except Exception:
+                    pass
+        try:
+            self._w.send(packet)   # реальный голосовой пакет — без изменений
         except Exception:
             pass
 
