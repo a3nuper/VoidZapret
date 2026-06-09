@@ -11,7 +11,7 @@
 запасной — `combined`-стратегии через `winws.exe`.
 
 - Репозиторий: `a3nuper/VoidZapret` (GitHub). Релизы: GitHub Releases (auto-update).
-- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.2.7).
+- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.2.8).
 - Поддержка автора: https://boosty.to/a3nuper
 
 ## Архитектура
@@ -57,8 +57,11 @@ VoidZapret.spec    → PyInstaller (onedir; collect_all webview/pythonnet/clr_lo
 HTTPS идёт через Python-цикл, очередь переполняется, пакеты теряются и соединения
 рвутся под нагрузкой. Десинк применяется только к ClientHello целевых SNI
 (таргетинг по `hosts.py`), `ip.ident=0` (фикс Google/видео). QUIC (UDP/443) дропается
-ВСЕГДА, пока движок активен (форс-TCP) — иначе видео YouTube (googlevideo) и часть
-Discord уходят в HTTP/3 мимо TCP-десинка и режутся DPI («страница есть, видео нет»).
+(форс-TCP), пока движок активен — иначе видео YouTube (googlevideo) уходит в HTTP/3
+мимо TCP-десинка и режется DPI («страница есть, видео нет»). **ИСКЛЮЧЕНИЕ: диапазон
+Discord/Cloudflare `162.159.0.0/16` движок НЕ трогает совсем** (ни QUIC-дроп, ни десинк —
+`_is_front_ip`): иначе ломается Discord-десктоп (Electron залипает на дропнутом QUIC и
+не подключается → нет сообщений/звонков), а сообщения/gateway/API там работают нативно.
 Дроп только внутри WinDivert-цикла, без правил фаервола (ничего не залипает после
 ребута). Fake-техника шлёт поддельные ClientHello двух типов: badseq (per-packet DPI)
 и correct-seq+снят ACK/datanoack (DPI со сборкой по seq), и каждый — на нескольких TTL

@@ -74,6 +74,18 @@ VOICE_HI_INT = int(_VOICE_NET.broadcast_address)
 # (как winws --dpi-desync-cutoff). На каждом из них шлём фейк-STUN по всем FAKE_TTLS.
 VOICE_CUTOFF = 8
 
+# Фронтенд Discord: домены discord.com / gateway.discord.gg / cdn.discordapp.com /
+# discord.media — все на Cloudflare 162.159.0.0/16. Движок этот диапазон НЕ трогает
+# (ни QUIC-дроп, ни десинк): Discord-десктоп (Electron/Chromium) ломается, если глушить
+# его QUIC, а сообщения/gateway/API там работают НАТИВНО (проверено). YouTube-видео не
+# затрагивается — googlevideo на другом ASN, не Cloudflare.
+DISCORD_FRONT_CIDR = "162.159.0.0/16"
+_FRONT_NET = ipaddress.ip_network(DISCORD_FRONT_CIDR)
+FRONT_LO_IP = str(_FRONT_NET.network_address)       # "162.159.0.0"
+FRONT_HI_IP = str(_FRONT_NET.broadcast_address)     # "162.159.255.255"
+FRONT_LO_INT = int(_FRONT_NET.network_address)
+FRONT_HI_INT = int(_FRONT_NET.broadcast_address)
+
 
 def build_fake_stun() -> bytes:
     """Фейковый STUN Binding Request (RFC 5389), 20 байт — декой для UDP-десинка
