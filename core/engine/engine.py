@@ -43,9 +43,10 @@ class VoidEngine:
                     f"ip.DstAddr <= {strategies.VOICE_HI_IP}")
     _VOICE = f"(udp and ({_VOICE_RANGE}))"
     # QUIC-дроп (форс-TCP) для ВСЕХ, КРОМЕ диапазона Discord/Cloudflare (162.159.x):
-    # его QUIC глушить нельзя — иначе Discord-десктоп (Electron) залипает на дропнутом
-    # QUIC и не подключается (сообщения/звонки). Discord-голос (66.22.x) ловится _VOICE
-    # и в _handle уходит в voice-десинк раньше. `not` фильтр не поддерживает — исключаем
+    # его QUIC НЕ дропаем (Discord-десктоп/Electron не залипает на чёрной дыре QUIC),
+    # а вот TCP-ClientHello к Discord по-прежнему ДЕСИНКается (Discord заблокирован по
+    # SNI, десинк обязателен — без него рукопожатие режется). Discord-голос (66.22.x)
+    # ловится _VOICE и уходит в voice-десинк. `not` фильтр не поддерживает — исключаем
     # диапазон через `< lo or > hi`.
     _QUIC = (f"(udp.DstPort == 443 and "
              f"(ip.DstAddr < {strategies.FRONT_LO_IP} or ip.DstAddr > {strategies.FRONT_HI_IP}))")
@@ -161,14 +162,6 @@ class VoidEngine:
             except Exception:
                 pass
             return
-        # Discord/Cloudflare-фронтенд (162.159.x): НЕ десинкаем — Discord-десктоп от
-        # этого ломается, а нативно он работает. Пропускаем ClientHello как есть.
-        if self._is_front_ip(packet.dst_addr or ""):
-            try:
-                self._w.send(packet)
-            except Exception:
-                pass
-            return
         try:
             data = bytes(packet.payload) if packet.payload else b""
             if is_client_hello(data):
@@ -201,18 +194,6 @@ class VoidEngine:
         except OSError:
             return False
         return strategies.VOICE_LO_INT <= v <= strategies.VOICE_HI_INT
-
-    @staticmethod
-    def _is_front_ip(addr: str) -> bool:
-        """IP в диапазоне фронтенда Discord/Cloudflare (162.159.0.0/16) — движок его
-        не трогает (иначе ломается Discord-десктоп)."""
-        if not addr:
-            return False
-        try:
-            v = struct.unpack("!I", socket.inet_aton(addr))[0]
-        except OSError:
-            return False
-        return strategies.FRONT_LO_INT <= v <= strategies.FRONT_HI_INT
 
     def _handle_voice(self, packet) -> None:
         """Десинк голоса Discord: перед реальным UDP-пакетом шлём несколько фейковых
