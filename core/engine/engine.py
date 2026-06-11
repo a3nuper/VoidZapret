@@ -207,7 +207,7 @@ class VoidEngine:
             self._voice_seen[key] = seen + 1
             for ttl in strategies.FAKE_TTLS:        # авто-TTL: фейк-STUN на разных TTL
                 fake = self._clone(packet)
-                fake.payload = strategies.build_fake_stun()
+                fake.payload = strategies.fake_stun_payload()
                 try:
                     fake.ipv4.ttl = ttl
                     fake.ipv4.ident = 0
@@ -247,14 +247,15 @@ class VoidEngine:
           2) correct-seq + снят ACK (datanoack) — для DPI со сборкой потока по seq:
              fake стоит на месте реального ClientHello, а сервер отбросит сегмент без
              ACK (невалиден в established).
-        SNI у каждого fake случайный (анти-fingerprint). Checksum валиден (pydivert
-        пересчитает при send).
+        Payload фейка — РЕАЛЬНЫЙ ClientHello к разрешённому RU-сайту (winws-крафч из
+        zapret/bin, случайный из нескольких → анти-fingerprint + РФ-DPI на него ведётся);
+        checksum валиден (pydivert пересчитает при send).
         """
         seq = packet.tcp.seq_num
         for ttl in strategies.FAKE_TTLS:
             # 1) badseq
             f1 = self._clone(packet)
-            f1.payload = strategies.build_fake_clienthello()
+            f1.payload = strategies.fake_clienthello_payload()
             try:
                 f1.tcp.seq_num = (seq - 0x40000) & _MASK
                 f1.ipv4.ttl = ttl
@@ -267,7 +268,7 @@ class VoidEngine:
                 pass
             # 2) correct-seq + datanoack
             f2 = self._clone(packet)
-            f2.payload = strategies.build_fake_clienthello()
+            f2.payload = strategies.fake_clienthello_payload()
             try:
                 f2.tcp.seq_num = seq
                 f2.tcp.ack = False

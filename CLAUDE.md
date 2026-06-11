@@ -11,7 +11,7 @@
 запасной — `combined`-стратегии через `winws.exe`.
 
 - Репозиторий: `a3nuper/VoidZapret` (GitHub). Релизы: GitHub Releases (auto-update).
-- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.2.9).
+- Текущая версия: см. `config.APP_VERSION` (на момент написания — 3.3.0).
 - Поддержка автора: https://boosty.to/a3nuper
 
 ## Архитектура
@@ -42,15 +42,17 @@ VoidZapret.spec    → PyInstaller (onedir; collect_all webview/pythonnet/clr_lo
 ### Как работает обход (главное)
 
 При нажатии «Запустить» → `Api._smart_start`:
-1. **VoidEngine** (приоритет): калибровка — перебирает техники
-   (`multifakedisorder/fakedisorder/multidisorder/disorder/fakesplit/fake/split/seqovl`),
-   проверяет связь до `ENGINE_HOSTS` (реальные эндпоинты: youtube, googlevideo,
-   youtubei, discord, gateway.discord.gg, cdn) через `probe_hosts_detail`, выбирает
-   ЛУЧШУЮ технику. Принимает движок при `ok >= total//2`. Лучшая техника запоминается
-   (`config.engine_strategy`): следующий старт берёт её СРАЗУ, без полного перебора;
-   если просела ниже порога — стратегии пересобираются заново (и на старте, и в
-   watchdog при просадке связи — он теперь пересобирает движок, а не сразу уходит в winws).
-2. Если движок не открылся/не пробил → **combined** (winws) как фолбэк.
+1. **VoidEngine** (приоритет). **v3.3 — БЕЗ дёрганья драйвера:** WinDivert открывается
+   ОДИН раз, движок стартует СРАЗУ на запомненной (`config.engine_strategy`) или самой
+   сильной технике (`STRATEGIES[0]=multifakedisorder`) — связь появляется за ~3с. Подбор
+   техники идёт ФОНОМ и ВЖИВУЮ в `_engine_tune`: `set_strategy` меняет технику мгновенно
+   БЕЗ stop/start, поэтому связь не рвётся (раньше калибровка делала stop→kill→start на
+   каждой из 8 техник = 30-60с дёрганья → «страница не грузится, подожди 1-2 минуты»).
+   `_engine_tune` проверяет текущую технику по `ENGINE_HOSTS` (`probe_hosts_detail`); если
+   пробила не всё — перебирает остальные вживую, берёт лучшую, запоминает. Watchdog при
+   просадке тоже перенастраивает технику ВЖИВУЮ (не дёргает движок), и только если совсем
+   не пробил — фолбэк на winws.
+2. Если движок не открылся (нет прав/конфликт драйвера) → **combined** (winws) как фолбэк.
 
 **Движок (engine.py) — критично:** WinDivert-фильтр ловит **ТОЛЬКО ClientHello**
 (`tcp.Payload[0]==0x16 && tcp.Payload[5]==0x01`), НЕ весь трафик 443 — иначе весь
@@ -68,7 +70,11 @@ HTTPS идёт через Python-цикл, очередь переполняет
 ребута). Fake-техника шлёт поддельные ClientHello двух типов: badseq (per-packet DPI)
 и correct-seq+снят ACK/datanoack (DPI со сборкой по seq), и каждый — на нескольких TTL
 (`strategies.FAKE_TTLS`, «авто-TTL»: фейк безопасен при любом TTL, поэтому перебор
-покрывает любую дистанцию до DPI). SNI фейка случайный (`_FAKE_SNIS`, анти-fingerprint).
+покрывает любую дистанцию до DPI). **Payload фейка (v3.3) — РЕАЛЬНЫЙ крафченый
+ClientHello к разрешённому RU-сайту** (`strategies.fake_clienthello_payload` берёт
+`zapret/bin/tls_clienthello_4pda_to.bin / max_ru / google`, случайный; fallback —
+синтетика): РФ-DPI на реальный ClientHello ведётся лучше, чем на минимальный синтетический
+(нужно для Discord-gateway). Голосовой фейк-STUN — тоже крафч (`zapret/bin/stun.bin`).
 Сплит — по midsld (середина домена 2-го уровня). Устойчивость к смене сети: `_net_monitor`
 следит за сменой основного IP (Wi-Fi/VPN) и переподнимает обход. **Probe по скорости
 (throughput) НЕ реализован**: требует экстрактор googlevideo (n-сигнатура YouTube), что

@@ -7,6 +7,8 @@ import ipaddress
 import os
 import random
 
+from config import get_zapret_dir
+
 # Порядок калибровки: сильные/проверенные техники первыми. Первая прошедшая —
 # рабочий метод для данного провайдера.
 STRATEGIES = ["multifakedisorder", "fakedisorder", "multidisorder", "disorder",
@@ -97,3 +99,39 @@ def build_fake_stun() -> bytes:
         + b"\x21\x12\xa4\x42"   # magic cookie
         + os.urandom(12)       # transaction id
     )
+
+
+# ------------------------------------------------------------- реальные winws-фейки
+# Готовые крафченые fake-payload'ы из zapret/bin (как winws --dpi-desync-fake-*):
+# РЕАЛЬНЫЙ ClientHello к разрешённому RU-сайту (4pda.to / max.ru) РФ-DPI охотнее
+# принимает за «легальное» соединение, чем минимальный синтетический фейк — это и
+# нужно для пробития Discord-gateway и др. Fallback — синтетика (движок остаётся
+# работоспособным и без этих файлов). Загружается один раз и кэшируется.
+_BIN_CACHE: dict[str, bytes] = {}
+_REAL_TLS_FILES = ("tls_clienthello_4pda_to.bin", "tls_clienthello_max_ru.bin",
+                   "tls_clienthello_www_google_com.bin")
+
+
+def _load_bin(name: str) -> bytes:
+    if name not in _BIN_CACHE:
+        data = b""
+        try:
+            p = get_zapret_dir() / "bin" / name
+            if p.is_file():
+                data = p.read_bytes()
+        except Exception:
+            data = b""
+        _BIN_CACHE[name] = data
+    return _BIN_CACHE[name]
+
+
+def fake_clienthello_payload() -> bytes:
+    """Реалистичный fake-ClientHello (крафч из zapret/bin, случайный), иначе синтетика."""
+    reals = [d for f in _REAL_TLS_FILES if (d := _load_bin(f))[:1] == b"\x16"]
+    return random.choice(reals) if reals else build_fake_clienthello()
+
+
+def fake_stun_payload() -> bytes:
+    """Крафченый STUN (zapret/bin/stun.bin) или синтетический."""
+    d = _load_bin("stun.bin")
+    return d if d[:2] == b"\x00\x01" else build_fake_stun()
